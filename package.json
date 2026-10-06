@@ -1,0 +1,55 @@
+{
+  "name": "dsh-500-ai-agent",
+  "version": "0.1.0",
+  "description": "Capability bridge that exposes agents from ashishpatel26/500-AI-Agents-Projects to DeepSeek Harness as registry-driven, permission-gated, isolated-runtime tools.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "agent-bridge",
+    "agent-registry",
+    "python"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./lib/*": "./lib/*.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "agents",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json",
+    "test": "vitest run --config vitest.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:all": "npm run build && npm test && npm run test:e2e"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-sandbox": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-subprocess": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "yaml": "^2.9.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    },
+    "engines": {
+      "dsh": ">=0.1.1-rc.1"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "vitest": "^4.1.11"
+  }
+}

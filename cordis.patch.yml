@@ -1,0 +1,20 @@
+# dsh-500-ai-agent — plugin mount + sandbox dependency.
+#
+# The plugin injects ['sandbox', 'subprocess', 'tools']. Both `sandbox` and
+# `subprocess` come from @deepseek-ai/dsh-base (already in this profile's
+# bundles), so no extra service rows are needed here — this file only
+# inserts the plugin itself.
+#
+# Knobs (all optional; defaults in lib/index.js):
+#   registryPath  : agents/registry.yaml, resolved against workspaceRoot
+#   workspaceRoot : base directory for the registry path
+#   enableRouting : true enables capability-based auto-selection
+#   logLevel      : info
+- insert:
+    - id: 500-ai-agent
+      name: dsh-500-ai-agent
+      config:
+        registryPath: agents/registry.yaml
+        workspaceRoot: /home/administrator/agent-workspace/dsh-custom/plugins/dsh-500-ai-agent
+        enableRouting: true
+        logLevel: info

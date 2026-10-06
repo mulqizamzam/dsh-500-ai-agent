@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output — regenerate with `npm run build`
+lib/
+tsconfig.tsbuildinfo
+
+# Local npm cache (writable-cache workaround for read-only $HOME)
+.npm-cache/
+
+# Probe / smoke artifacts
+.dev/
+*.log
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example

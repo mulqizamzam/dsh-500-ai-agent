@@ -1,0 +1,568 @@
+# Agent Registry — dsh-500-ai-agent
+#
+# Schema per types.ts. All entries require:
+#   agent_id, name, version, runtime, entrypoint, capabilities,
+#   permissions, resources, source, status, root
+#
+# Security posture: default-deny. Every permission leaf defaults to its
+# closed value. Permission overrides are DENIED if the agent does not
+# declare them.
+#
+# Only agent 21 (pii-sanitization) is registered here as the reference agent.
+# Additional agents will be added after Phase 8 validation.
+
+pii-sanitization:
+  agent_id: pii-sanitization
+  name: PII Sanitization Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--text"
+    - "{{task}}"
+    - "--tx-hash"
+    - "TRIAL"
+    - "--context"
+    - "general"
+  capabilities:
+    - pii
+    - security
+    - compliance
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    # TRUSTBOOST_API_BASE is the upstream base URL. It is declared here as an
+    # explicit env channel so the e2e suite can point the agent at a local
+    # fixture; the bridge forwards it ONLY because it is listed, never by name.
+    secrets:
+      - TRUSTBOOST_API_BASE
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/21-pii-sanitization-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent
+
+code-review:
+  agent_id: code-review
+  name: Code Review Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--code"
+    - "{{task}}"
+    - "--language"
+    - "python"
+  capabilities:
+    - code-review
+    - security
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+  resources:
+    timeout_ms: 180000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/02-code-review-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  venv: .dsh500-venv
+  root: ../../../../500-AI-Agents-Projects/agents/02-code-review-agent
+
+documentation-writer:
+  agent_id: documentation-writer
+  name: Documentation Writer Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--code"
+    - "{{task}}"
+    - "--format"
+    - "docstrings"
+  capabilities:
+    - documentation
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+  resources:
+    timeout_ms: 180000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/16-documentation-writer
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  venv: .dsh500-venv
+  root: ../../../../500-AI-Agents-Projects/agents/16-documentation-writer
+
+web-research:
+  agent_id: web-research
+  name: Web Research Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--query"
+    - "{{task}}"
+  capabilities:
+    - research
+    - summary
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+      - TAVILY_API_KEY
+  resources:
+    timeout_ms: 240000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/01-web-research-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  venv: .dsh500-venv
+  root: ../../../../500-AI-Agents-Projects/agents/01-web-research-agent
+
+email-drafting:
+  agent_id: email-drafting
+  name: Email Drafting Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--context"
+    - "{{task}}"
+    - "--tone"
+    - "professional and friendly"
+    - "--recipient"
+    - "a potential client"
+  capabilities:
+    - documentation
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/05-email-drafting-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/05-email-drafting-agent
+
+news-summarizer:
+  agent_id: news-summarizer
+  name: News Summarizer Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--topic"
+    - "{{task}}"
+    - "--count"
+    - "5"
+  capabilities:
+    - summary
+    - research
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+      - NEWS_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/06-news-summarizer-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/06-news-summarizer-agent
+
+github-issue-triager:
+  agent_id: github-issue-triager
+  name: GitHub Issue Triager
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--title"
+    - "{{task}}"
+  capabilities:
+    - code-review
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+      - GITHUB_TOKEN
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/07-github-issue-triager
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/07-github-issue-triager
+
+resume-parser:
+  agent_id: resume-parser
+  name: Resume Parser Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--resume"
+    - "{{task}}"
+  capabilities:
+    - data-analysis
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/09-resume-parser-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/09-resume-parser-agent
+
+meeting-notes:
+  agent_id: meeting-notes
+  name: Meeting Notes Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--text"
+    - "{{task}}"
+    - "--output"
+    - "meeting_notes.md"
+  capabilities:
+    - documentation
+    - summary
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/10-meeting-notes-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/10-meeting-notes-agent
+
+stock-research:
+  agent_id: stock-research
+  name: Stock Research Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--ticker"
+    - "{{task}}"
+  capabilities:
+    - research
+    - data-analysis
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/11-stock-research-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/11-stock-research-agent
+
+travel-planner:
+  agent_id: travel-planner
+  name: Travel Planner Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--destination"
+    - "{{task}}"
+    - "--days"
+    - "7"
+    - "--budget"
+    - "3000"
+    - "--interests"
+    - "food, culture, history"
+  capabilities:
+    - general
+    - research
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/12-travel-planner-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/12-travel-planner-agent
+
+social-media:
+  agent_id: social-media
+  name: Social Media Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--topic"
+    - "{{task}}"
+    - "--platforms"
+    - "twitter,linkedin,instagram"
+  capabilities:
+    - documentation
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/14-social-media-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/14-social-media-agent
+
+unit-test-generator:
+  agent_id: unit-test-generator
+  name: Unit Test Generator
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--code"
+    - "{{task}}"
+  capabilities:
+    - code-review
+    - qa
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/15-unit-test-generator
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/15-unit-test-generator
+
+recipe-agent:
+  agent_id: recipe-agent
+  name: Recipe Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--ingredients"
+    - "{{task}}"
+  capabilities:
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/17-recipe-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/17-recipe-agent
+
+job-application:
+  agent_id: job-application
+  name: Job Application Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--job-desc"
+    - "{{task}}"
+  capabilities:
+    - documentation
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/18-job-application-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/18-job-application-agent
+
+competitive-analysis:
+  agent_id: competitive-analysis
+  name: Competitive Analysis Agent
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--company"
+    - "{{task}}"
+  capabilities:
+    - research
+    - data-analysis
+    - general
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/19-competitive-analysis-agent
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/19-competitive-analysis-agent
+
+multi-agent-debate:
+  agent_id: multi-agent-debate
+  name: Multi-Agent Debate System
+  version: 1.0.0
+  runtime:
+    type: python
+    version: "3.11"
+  entrypoint: agent.py
+  entrypoint_args:
+    - "--topic"
+    - "{{task}}"
+    - "--rounds"
+    - "2"
+  capabilities:
+    - general
+    - research
+  permissions:
+    network: true
+    filesystem: null
+    shell: false
+    secrets:
+      - OPENAI_API_KEY
+  resources:
+    timeout_ms: 120000
+  source:
+    repository: ashishpatel26/500-AI-Agents-Projects
+    path: agents/20-multi-agent-debate
+    commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
+  status: experimental
+  maturity: experimental
+  root: ../../../../500-AI-Agents-Projects/agents/20-multi-agent-debate
