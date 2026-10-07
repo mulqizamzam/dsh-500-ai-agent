@@ -54,32 +54,25 @@ export async function ensureVenv(
   const reqContent = readFileSync(requirementsPath, 'utf-8')
   const reqHash = createHash('sha256').update(reqContent, 'utf-8').digest('hex')
 
-  // Determine venv location
+  // Determine venv location. Reusing a venv needs no write at all, so a
+  // healthy primary venv wins before the write probe: the probe fails on a
+  // read-only catalog mount even though the venv is sitting right there, and
+  // picking the fallback then would discard it (worst case: rebuild attempt).
   const primary = join(agentRoot, '.dsh500-venv')
   const fallback = join(workspaceRoot, 'venvs', agentId, '.dsh500-venv')
-  const venvDir = canWriteDir(agentRoot) ? primary : fallback
+  const venvDir = reusableVenv(primary, reqHash) || canWriteDir(agentRoot) ? primary : fallback
   const pythonBin = join(venvDir, 'bin', 'python')
 
-  // Fast path: reuse existing healthy venv
-  if (existsSync(pythonBin)) {
-    const metaPath = join(venvDir, '.dsh500-meta.json')
-    try {
-      if (existsSync(metaPath)) {
-        const meta = JSON.parse(readFileSync(metaPath, 'utf-8')) as { reqHash?: string }
-        if (meta.reqHash === reqHash) {
-          return { root: agentRoot, python: pythonBin, healthy: true, reqHash, note: 'reused' }
-        }
-      }
-    } catch {
-      // Ignore parse errors, fall through to recreate
-    }
+  // Fast path: reuse an existing healthy venv
+  if (reusableVenv(venvDir, reqHash)) {
+    return { root: agentRoot, python: pythonBin, healthy: true, reqHash, note: 'reused' }
   }
 
   // Create venv
   mkdirSync(venvDir, { recursive: true })
   const mkout = await run('python3', ['-m', 'venv', venvDir], { timeoutMs })
   if (mkout.code !== 0) {
-    return { root: agentRoot, python: pythonBin, healthy: false, error: `venv creation failed (exit ${mkout.code}): ${mkout.stderr.slice(0, 300)}`, note: 'venv_create_failed' }
+    return { root: agentRoot, python: pythonBin, healthy: false, error: `venv creation failed (exit ${mkout.code}): ${failureDetail(mkout, 300)}`, note: 'venv_create_failed' }
   }
   if (!existsSync(pythonBin)) {
     return { root: agentRoot, python: pythonBin, healthy: false, error: `python binary missing at ${pythonBin}`, note: 'venv_create_failed' }
@@ -91,11 +84,33 @@ export async function ensureVenv(
   })
   if (instOut.code !== 0) {
     rmSync(venvDir, { recursive: true, force: true })
-    return { root: agentRoot, python: pythonBin, healthy: false, error: `pip install failed (exit ${instOut.code}): ${instOut.stderr.slice(0, 500)}`, note: 'pip_failed' }
+    return { root: agentRoot, python: pythonBin, healthy: false, error: `pip install failed (exit ${instOut.code}): ${failureDetail(instOut, 500)}`, note: 'pip_failed' }
   }
 
   try { writeFileSync(join(venvDir, '.dsh500-meta.json'), JSON.stringify({ reqHash })) } catch {}
   return { root: agentRoot, python: pythonBin, healthy: true, reqHash, note: 'created' }
+}
+
+/**
+ * True when `venvDir` holds a venv built from exactly these requirements.
+ * Reuse must never write, so this reads only.
+ */
+function reusableVenv(venvDir: string, reqHash: string): boolean {
+  if (!existsSync(join(venvDir, 'bin', 'python'))) return false
+  try {
+    const meta = JSON.parse(readFileSync(join(venvDir, '.dsh500-meta.json'), 'utf-8')) as { reqHash?: string }
+    return meta.reqHash === reqHash
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Diagnostic text for a failed child process. `python3 -m venv` reports on
+ * stdout, pip on stderr — reading stderr alone blanked out the real reason.
+ */
+function failureDetail(out: { stderr: string; stdout: string }, max: number): string {
+  return (out.stderr.trim() || out.stdout.trim()).slice(0, max)
 }
 
 function canWriteDir(dir: string): boolean {

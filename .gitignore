@@ -12,6 +12,9 @@ tsconfig.tsbuildinfo
 .dev/
 *.log
 
+# Scratch fixtures created by tests
+tests/.tmp*/
+
 # Secrets — never commit
 .env
 .env.*
