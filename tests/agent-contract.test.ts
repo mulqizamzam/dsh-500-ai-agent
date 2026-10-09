@@ -123,7 +123,7 @@ describe('agent_contract: stdout shape', () => {
 })
 
 describe('agent_contract: copies match the canonical file', () => {
-  const agentsRoot = join(here, '..', '..', '..', '..', '500-AI-Agents-Projects', 'agents')
+  const agentsRoot = join(here, '..', '..', '..', '..', 'project', '500-AI-Agents-Projects', 'agents')
   let canonicalHash: string
   let copies: string[] = []
 
