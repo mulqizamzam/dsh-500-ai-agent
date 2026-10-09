@@ -50,7 +50,7 @@ pii-sanitization:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/21-pii-sanitization-agent
 
 code-review:
   agent_id: code-review
@@ -87,7 +87,7 @@ code-review:
   status: experimental
   maturity: experimental
   venv: .dsh500-venv
-  root: ../../../../500-AI-Agents-Projects/agents/02-code-review-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/02-code-review-agent
 
 documentation-writer:
   agent_id: documentation-writer
@@ -123,7 +123,7 @@ documentation-writer:
   status: experimental
   maturity: experimental
   venv: .dsh500-venv
-  root: ../../../../500-AI-Agents-Projects/agents/16-documentation-writer
+  root: ../../../../project/500-AI-Agents-Projects/agents/16-documentation-writer
 
 web-research:
   agent_id: web-research
@@ -159,7 +159,7 @@ web-research:
   status: experimental
   maturity: experimental
   venv: .dsh500-venv
-  root: ../../../../500-AI-Agents-Projects/agents/01-web-research-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/01-web-research-agent
 
 email-drafting:
   agent_id: email-drafting
@@ -195,7 +195,7 @@ email-drafting:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/05-email-drafting-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/05-email-drafting-agent
 
 news-summarizer:
   agent_id: news-summarizer
@@ -231,7 +231,7 @@ news-summarizer:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/06-news-summarizer-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/06-news-summarizer-agent
 
 github-issue-triager:
   agent_id: github-issue-triager
@@ -264,7 +264,7 @@ github-issue-triager:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/07-github-issue-triager
+  root: ../../../../project/500-AI-Agents-Projects/agents/07-github-issue-triager
 
 resume-parser:
   agent_id: resume-parser
@@ -296,7 +296,7 @@ resume-parser:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/09-resume-parser-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/09-resume-parser-agent
 
 meeting-notes:
   agent_id: meeting-notes
@@ -331,7 +331,7 @@ meeting-notes:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/10-meeting-notes-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/10-meeting-notes-agent
 
 stock-research:
   agent_id: stock-research
@@ -364,7 +364,7 @@ stock-research:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/11-stock-research-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/11-stock-research-agent
 
 travel-planner:
   agent_id: travel-planner
@@ -402,7 +402,7 @@ travel-planner:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/12-travel-planner-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/12-travel-planner-agent
 
 social-media:
   agent_id: social-media
@@ -436,7 +436,7 @@ social-media:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/14-social-media-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/14-social-media-agent
 
 unit-test-generator:
   agent_id: unit-test-generator
@@ -469,7 +469,7 @@ unit-test-generator:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/15-unit-test-generator
+  root: ../../../../project/500-AI-Agents-Projects/agents/15-unit-test-generator
 
 recipe-agent:
   agent_id: recipe-agent
@@ -500,7 +500,7 @@ recipe-agent:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/17-recipe-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/17-recipe-agent
 
 job-application:
   agent_id: job-application
@@ -532,7 +532,7 @@ job-application:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/18-job-application-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/18-job-application-agent
 
 competitive-analysis:
   agent_id: competitive-analysis
@@ -565,7 +565,7 @@ competitive-analysis:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/19-competitive-analysis-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/19-competitive-analysis-agent
 
 multi-agent-debate:
   agent_id: multi-agent-debate
@@ -599,4 +599,4 @@ multi-agent-debate:
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
   maturity: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/20-multi-agent-debate
+  root: ../../../../project/500-AI-Agents-Projects/agents/20-multi-agent-debate
