@@ -154,7 +154,7 @@ Expected plugin load log line:
 | pii-sanitization | fallback `<workspaceRoot>/venvs/...` | code path exists; created? see below |
 
 **Root cause found and fixed in Phase 3:** the agent catalog
-(`/home/administrator/agent-workspace/500-AI-Agents-Projects`) is on the
+(`/home/administrator/agent-workspace/project/500-AI-Agents-Projects`) is on the
 read-only `/` mount. `ensureVenv()` originally wrote inside the agent root.
 Runtime-manager now probes writability and falls back to
 `<workspaceRoot>/venvs/<agentId>/.dsh500-venv` — dependency isolation

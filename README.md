@@ -126,16 +126,16 @@ Kalau file itu muncul, build selesai.
 ### Langkah 4, pastikan checkout katalog upstream ada
 
 Tiap entri registry menunjuk folder agent lewat field `root` yang relatif,
-contohnya `../../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent`.
+contohnya `../../../../project/500-AI-Agents-Projects/agents/21-pii-sanitization-agent`.
 Path relatif itu diselesaikan terhadap direktori file registry, yaitu folder
 `agents/` (lihat `parseRegistryYaml` di `src/registry.ts`). Untuk repo
 `dsh-500-ai-agent` di path host ini, folder tersebut berarti
-`/home/administrator/agent-workspace/500-AI-Agents-Projects`.
+`/home/administrator/agent-workspace/project/500-AI-Agents-Projects`.
 
 Cek apakah checkout itu ada:
 
 ```bash
-ls ../../../../500-AI-Agents-Projects/agents
+ls ../../../../project/500-AI-Agents-Projects/agents
 ```
 
 Perintah ini dijalankan dari folder `agents/` di repo plugin. Kalau folder tidak
@@ -282,7 +282,7 @@ pii-sanitization:
     path: agents/21-pii-sanitization-agent
     commit: 9beeb721c2af551bacaab827a76bddaecaa0ca5e
   status: experimental
-  root: ../../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent
+  root: ../../../../project/500-AI-Agents-Projects/agents/21-pii-sanitization-agent
 ```
 
 Penjelasan field yang paling sering membingungkan:
