@@ -67,7 +67,7 @@ describe('permissions: LLM agents gate their declared secrets', () => {
     const result = evaluatePermission(REG['code-review'], {})
     expect(result.allowed).toBe(true)
     expect(result.granted.secrets).toContain('OPENAI_API_KEY')
-    expect(result.granted.network).toBe(false)
+    expect(result.granted.network).toBe(true)
   })
 
   it('grants both OPENAI_API_KEY and TAVILY_API_KEY for web-research', () => {
@@ -108,11 +108,16 @@ describe('bridge: LLM agent argv + env construction', () => {
     return { spies, result }
   }
 
-  it('code-review: bridge returns VENV_UNAVAILABLE when no venv is prepared', async () => {
-    const { spies } = await captureSpec('code-review', 'def f(): pass')
-    // ensureVenv ran first and found no venv → bridge returned VENV_UNAVAILABLE
-    // before calling spawn.
-    expect(spies).toHaveLength(0)
+  it('code-review: bridge reaches spawn once its venv exists', async () => {
+    const { spies, result } = await captureSpec('code-review', 'def f(): pass')
+    // ensureVenv reuses the per-agent venv the runtime manager materialises,
+    // so the bridge gets as far as spawning. This asserts the argv/env
+    // construction, not the venv lifecycle — the lifecycle has its own
+    // coverage in runtime-backend.spec.ts.
+    expect(spies).toHaveLength(1)
+    expect(spies[0].argv[1]).toMatch(/agent\.py$/)
+    expect(spies[0].cwd).toContain('02-code-review-agent')
+    expect(result.metadata.agent_id).toBe('code-review')
   })
 })
 

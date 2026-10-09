@@ -20,6 +20,7 @@
   "files": [
     "lib",
     "agents",
+    "agent_contract.py",
     "cordis.patch.yml",
     "README.md"
   ],

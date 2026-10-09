@@ -62,7 +62,7 @@ export interface AgentInvocationInput {
 /** Service shape required by the bridge. */
 export interface BridgeServices {
   subprocess: { spawn(spec: SubprocessSpawnSpec): SubprocessHandle }
-  sandbox?: { confine(argv: readonly string[], policy: import('@deepseek-ai/dsh-sandbox').SandboxPolicy): import('@deepseek-ai/dsh-sandbox').ConfinedArgv }
+  sandbox?: { confine(argv: readonly string[], policy: import('@deepseek-ai/dsh-sandbox').SandboxPolicy, signal?: AbortSignal): Promise<import('@deepseek-ai/dsh-sandbox').ConfinedArgv> }
   logger: { info(msg: string, ...args: unknown[]): void; warn(msg: string, ...args: unknown[]): void; error(msg: string, ...args: unknown[]): void }
   /**
    * Writable directory the runtime manager uses when an agent's own root is
@@ -161,7 +161,7 @@ export async function runAgent(
         mode: 'workspace-write' as const,
         workspaceRoot: resolvedRoot,
       }
-      const confinedResult = services.sandbox.confine(finalArgv, policy)
+      const confinedResult = await services.sandbox.confine(finalArgv, policy)
       finalArgv = confinedResult.argv
       enforcement = confinedResult.enforcement
       denialSignatures = confinedResult.denialSignatures
@@ -237,8 +237,19 @@ export async function runAgent(
   abortController.signal.addEventListener('abort', onAbort, { once: true })
   const timeoutTimer = setTimeout(() => abortController.abort(), timeoutMs)
 
-  const stdoutP = collectStream(handle.stdout)
-  const stderrP = collectStream(handle.stderr)
+  // The spawn spec requests collect mode ({maxBytes, spill}), so the raw
+  // `handle.stdout`/`handle.stderr` pipes are withheld and output lives in
+  // `handle.collected.*`. That reader is batch-oriented: `readFrom` documents
+  // its result as "the whole retained tail" and is only meaningful once the
+  // stream has settled, so the reads must NOT start before the process closes.
+  // Reading early can observe an empty tail and report MALFORMED_OUTPUT for an
+  // agent that exited 0 having printed valid JSON.
+  //
+  // Raw pipes are still supported as a fallback for a spawn that exposes them
+  // (pipe mode) — that reader is a live stream, so it has to be drained
+  // concurrently or it can block the child on a full pipe.
+  const rawStdoutP = handle.stdout ? collectStream(handle.stdout) : null
+  const rawStderrP = handle.stderr ? collectStream(handle.stderr) : null
 
   try {
     const outcome = await raceWithAbort(handle, abortController.signal)
@@ -259,7 +270,7 @@ export async function runAgent(
       }
     }
 
-    const [stdout, stderr] = await Promise.all([stdoutP, stderrP])
+    const [stdout, stderr] = await readSettledOutput(handle, rawStdoutP, rawStderrP)
     metadata.status = outcome.exitCode === 0 ? 'success' : 'error'
 
     if (outcome.exitCode !== 0) {
@@ -410,6 +421,40 @@ function buildSpawnSpec(
     signal,
     env: Object.keys(env).length > 0 ? env : undefined,
   }
+}
+
+/**
+ * Read both spawned streams after the process has settled.
+ *
+ * Collect mode is the path this bridge actually uses: the subprocess service
+ * withholds the raw pipe and exposes an offset-based reader on
+ * `handle.collected`. That reader's contract is batch-shaped — `readFrom(0)`
+ * yields the whole captured stream only once the process has closed — so this
+ * helper is called strictly AFTER `handle.done` settles. Calling it earlier can
+ * observe an empty tail and misreport a successful agent as malformed.
+ *
+ * When a raw `Readable` was exposed (pipe mode) it was already drained
+ * concurrently by the caller, so that in-flight promise is awaited here
+ * instead of re-reading the stream.
+ * @param handle - the spawned process handle.
+ * @param rawStdoutP - in-flight drain of the raw stdout pipe, or null when the
+ *   stream was collected.
+ * @param rawStderrP - in-flight drain of the raw stderr pipe, or null when the
+ *   stream was collected.
+ * @returns the settled stdout and stderr text.
+ */
+async function readSettledOutput(
+  handle: SubprocessHandle,
+  rawStdoutP: Promise<string> | null,
+  rawStderrP: Promise<string> | null,
+): Promise<[string, string]> {
+  const stdout = rawStdoutP !== null
+    ? await rawStdoutP
+    : handle.collected.stdout?.readFrom(0).text ?? ''
+  const stderr = rawStderrP !== null
+    ? await rawStderrP
+    : handle.collected.stderr?.readFrom(0).text ?? ''
+  return [stdout, stderr]
 }
 
 /** Collect a Readable stream into a string. */

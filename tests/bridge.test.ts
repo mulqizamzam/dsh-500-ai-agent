@@ -296,10 +296,17 @@ describe('bridge.runAgent', () => {
 
   const networkDeniedGrant = { allowed: true, denied: [] as string[], granted: { network: false, filesystem: null, shell: false, secrets: [] } }
 
-  /** A mock sandbox that reports it produced a bwrap-confined argv. */
+  /**
+   * A mock sandbox that reports it produced a bwrap-confined argv.
+   *
+   * `confine` returns a Promise because the real `SandboxProvider.confine` is
+   * async: a synchronous mock let the bridge skip its `await` and still read
+   * `denialSignatures` off the returned object, which is how the missing-await
+   * defect shipped.
+   */
   function bwrapSandbox() {
     return {
-      confine: (_argv: readonly string[], _policy: unknown) => ({
+      confine: async (_argv: readonly string[], _policy: unknown) => ({
         argv: ['bwrap', '--ro-bind', '/', '/', '--proc', '/proc', '--', 'python3', '/tmp/agent.py'],
         enforcement: 'full' as const,
         denialSignatures: ['read-only file system'],
@@ -311,7 +318,7 @@ describe('bridge.runAgent', () => {
   /** A mock sandbox that reports it produced a Landlock (non-bwrap) argv. */
   function landlockSandbox() {
     return {
-      confine: (_argv: readonly string[], _policy: unknown) => ({
+      confine: async (_argv: readonly string[], _policy: unknown) => ({
         argv: ['/usr/local/bin/landlock-run', '--mode', 'workspace-write', '--', 'python3', '/tmp/agent.py'],
         enforcement: 'full' as const,
         denialSignatures: ['permission denied'],
@@ -405,6 +412,143 @@ describe('bridge.runAgent', () => {
       // tools_used is the agent's tool telemetry; the sandbox is a runtime
       // concern and must not pollute the agent-tool list.
       expect(result.metadata.tools_used).not.toContain('sandbox')
+    }
+  })
+})
+
+/**
+ * DEFECT 4: collect-mode output was read from the wrong place.
+ *
+ * The spawn spec requests `stdout: { maxBytes, spill }`, which is the
+ * subprocess service's COLLECT disposition. In collect mode the service
+ * withholds the raw pipe — `subprocess-local/src/spawn.ts` only exposes
+ * `child.stdout` when the mode is literally `'pipe'` — so `handle.stdout` is
+ * `undefined` and the payload lives on `handle.collected.stdout` as an
+ * offset-based reader. The bridge used to read `handle.stdout`, so every
+ * agent invocation collected the empty string and was classified
+ * MALFORMED_OUTPUT even though the agent exited 0 having printed valid JSON.
+ *
+ * The handle built below is the real collect-mode shape: no raw pipes, a
+ * `collected` reader that is batch-shaped like the real one — it answers
+ * EMPTY until the process settles and only then returns the full text. That
+ * second half matters: a reader which answers immediately would let a bridge
+ * that reads BEFORE settlement pass, and that premature read is the other way
+ * this defect resurfaces (an agent that printed valid JSON still reported as
+ * malformed). A test wired only with PassThrough pipes cannot catch either
+ * half — it exercises the pipe path that production never takes.
+ */
+function makeCollectModeServices(opts: FakeHandleOptions) {
+  const spawned: { spec: SubprocessSpawnSpec }[] = []
+  let settled = false
+
+  const reader = (text: string) => ({
+    readFrom: (fromByte: number) => ({
+      text: settled ? text : '',
+      nextOffset: fromByte + (settled ? text.length : 0),
+      lossy: false,
+    }),
+  })
+
+  const handle: SubprocessHandle = {
+    pid: 4343,
+    stdin: undefined,
+    // Collect mode: the service exposes NO raw pipe.
+    stdout: undefined,
+    stderr: undefined,
+    collected: {
+      stdout: reader(opts.stdout ?? ''),
+      stderr: reader(opts.stderr ?? ''),
+    },
+    done: (opts.delayMs
+      ? new Promise<never>(() => {}) // never settles: timeout path
+      : Promise.resolve({
+          exitCode: opts.exitCode,
+          signal: opts.signal,
+        }).then((o) => {
+          // The reader only has its payload once the process has closed.
+          settled = true
+          return o
+        })) as Promise<{ exitCode: number | null; signal: string | null }>,
+    terminate: () => {},
+  } as unknown as SubprocessHandle
+
+  return {
+    subprocess: {
+      spawn: (spec: SubprocessSpawnSpec) => {
+        spawned.push({ spec })
+        return handle
+      },
+    },
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    handle,
+    get spawnedSpecs() {
+      return spawned
+    },
+  }
+}
+
+describe('bridge.runAgent — collect-mode output disposition', () => {
+  it('DEFECT 4: parses agent stdout from handle.collected when raw pipes are withheld', async () => {
+    const services = makeCollectModeServices({
+      exitCode: 0,
+      signal: null,
+      stdout: '{"status":"success","result":"clean"}',
+    })
+
+    const result = await runAgent(
+      makeEntry(),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services as unknown as BridgeServices,
+      allowAll,
+    )
+
+    expect(result.status).toBe('success')
+    if (result.status === 'success') {
+      expect(result.result).toMatchObject({ status: 'success', result: 'clean' })
+    }
+  })
+
+  it('DEFECT 4: surfaces collected stderr on a non-zero exit', async () => {
+    const services = makeCollectModeServices({
+      exitCode: 1,
+      signal: null,
+      stderr: 'Traceback (most recent call last): ...',
+    })
+
+    const result = await runAgent(
+      makeEntry(),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services as unknown as BridgeServices,
+      allowAll,
+    )
+
+    expect(result.status).toBe('error')
+    if (result.status === 'error') {
+      expect(result.error.code).toBe('AGENT_EXIT_ERROR')
+      const details = result.error.details as { stderr: string }
+      expect(details.stderr).toContain('Traceback')
+    }
+  })
+
+  it('DEFECT 4: still reports MALFORMED_OUTPUT when collected stdout carries no JSON', async () => {
+    const services = makeCollectModeServices({
+      exitCode: 0,
+      signal: null,
+      stdout: 'plain progress text without json',
+    })
+
+    const result = await runAgent(
+      makeEntry(),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services as unknown as BridgeServices,
+      allowAll,
+    )
+
+    // The gate must stay sharp: reading from the right place must not turn
+    // every non-JSON payload into a success.
+    expect(result.status).toBe('error')
+    if (result.status === 'error') {
+      expect(result.error.code).toBe('MALFORMED_OUTPUT')
     }
   })
 })

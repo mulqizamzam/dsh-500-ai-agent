@@ -32,6 +32,12 @@ export interface PluginConfig {
   workspaceRoot: string
   enableRouting: boolean
   logLevel: 'info' | 'warn' | 'error'
+  /**
+   * Default env vars forwarded to every agent invocation. Merged with the
+   * per-call `context` (call-site wins) before permission evaluation.
+   * Use this to avoid pasting OPENAI_API_KEY into every tool call.
+   */
+  defaultContext?: Record<string, string>
 }
 
 export const Config = Schema.object({
@@ -39,6 +45,7 @@ export const Config = Schema.object({
   workspaceRoot: Schema.string().default(''),
   enableRouting: Schema.boolean().default(true),
   logLevel: Schema.string().default('info'),
+  defaultContext: Schema.dict(Schema.string()).default({}),
 })
 
 // ── Plugin state ─────────────────────────────────────────────────────────────
@@ -84,6 +91,25 @@ export function apply(ctx: Context, config: Partial<PluginConfig>): void {
     workspaceRoot: config.workspaceRoot ?? '',
     enableRouting: config.enableRouting ?? true,
     logLevel: config.logLevel ?? 'info',
+    defaultContext: config.defaultContext ?? {},
+  }
+
+  // ── Helper: resolve `env:VAR_NAME` placeholders in defaultContext ───────────
+  function resolveDefaultContext(): Record<string, string> {
+    const raw = fullConfig.defaultContext ?? {}
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof v === 'string' && v.startsWith('env:')) {
+        const envName = v.slice(4)
+        const resolved = process.env[envName]
+        if (resolved !== undefined) {
+          out[k] = resolved
+        }
+      } else {
+        out[k] = v
+      }
+    }
+    return out
   }
   ensureRegistry(fullConfig)
 
@@ -140,6 +166,7 @@ export function apply(ctx: Context, config: Partial<PluginConfig>): void {
       const agentIdOverride = args.agent_id as string | undefined
       const task = args.task as string
       const context = args.context as Record<string, unknown> | undefined
+      const mergedContext = { ...resolveDefaultContext(), ...(context ?? {}) }
       const timeoutMs = Number(args.timeout_ms) || undefined
       const permOverride = args.permissions_override as Record<string, unknown> | undefined
 
@@ -192,10 +219,17 @@ export function apply(ctx: Context, config: Partial<PluginConfig>): void {
 
       const result = await runAgent(
         entry,
-        { agent_id: selectedAgentId, task, context, timeout_ms: effectiveTimeout },
+        { agent_id: selectedAgentId, task, context: mergedContext, timeout_ms: effectiveTimeout },
         {
           subprocess: ctx.subprocess,
-          sandbox: ctx.sandbox as NonNullable<typeof ctx.sandbox>,
+          // The host runs dsh-sandbox 0.2.0-rc.2, whose confine() is async,
+          // while the published 0.1.x declarations this plugin compiles against
+          // still type it synchronous. Wrapping the call in Promise.resolve
+          // satisfies the bridge's async contract under both shapes: a promise
+          // return passes through, a plain result gets wrapped.
+          sandbox: ctx.sandbox ? {
+            confine: (argv, policy) => Promise.resolve(ctx.sandbox!.confine(argv, policy)),
+          } : undefined,
           logger: ctx.logger,
           workspaceRoot: fullConfig.workspaceRoot || process.cwd(),
         },

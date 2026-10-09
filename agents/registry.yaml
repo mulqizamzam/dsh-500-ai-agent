@@ -40,6 +40,8 @@ pii-sanitization:
     # fixture; the bridge forwards it ONLY because it is listed, never by name.
     secrets:
       - TRUSTBOOST_API_BASE
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -74,6 +76,8 @@ code-review:
     secrets:
       - OPENAI_API_KEY
       - OPENAI_BASE_URL
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 180000
   source:
@@ -108,6 +112,8 @@ documentation-writer:
     secrets:
       - OPENAI_API_KEY
       - OPENAI_BASE_URL
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 180000
   source:
@@ -142,6 +148,8 @@ web-research:
       - OPENAI_API_KEY
       - OPENAI_BASE_URL
       - TAVILY_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 240000
   source:
@@ -177,6 +185,8 @@ email-drafting:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -211,6 +221,8 @@ news-summarizer:
     secrets:
       - OPENAI_API_KEY
       - NEWS_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -242,6 +254,8 @@ github-issue-triager:
     secrets:
       - OPENAI_API_KEY
       - GITHUB_TOKEN
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -272,6 +286,8 @@ resume-parser:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -305,6 +321,8 @@ meeting-notes:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -336,6 +354,8 @@ stock-research:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -372,6 +392,8 @@ travel-planner:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -404,6 +426,8 @@ social-media:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -435,6 +459,8 @@ unit-test-generator:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -464,6 +490,8 @@ recipe-agent:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -494,6 +522,8 @@ job-application:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -525,6 +555,8 @@ competitive-analysis:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:
@@ -557,6 +589,8 @@ multi-agent-debate:
     shell: false
     secrets:
       - OPENAI_API_KEY
+      - OPENAI_MODEL
+      - REASONING_EFFORT
   resources:
     timeout_ms: 120000
   source:

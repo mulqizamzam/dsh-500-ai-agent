@@ -15,6 +15,9 @@ tsconfig.tsbuildinfo
 # Scratch fixtures created by tests
 tests/.tmp*/
 
+# Python bytecode cache produced when agent_contract.py is executed
+__pycache__/
+
 # Secrets — never commit
 .env
 .env.*

@@ -61,7 +61,12 @@ export function evaluatePermission(
   }
 
   // ── Network ──────────────────────────────────────────────
-  const reqNetwork = request.network ?? false
+  // When the request names no preference, inherit the agent's own declaration
+  // (same fallback `secrets` already uses). Without this, every silent call —
+  // which is the normal one since run_agent never sends `network` — would
+  // collapse to false, the bridge would inject --unshare-net, and any agent
+  // that needs an API call would die with APIConnectionError.
+  const reqNetwork = request.network ?? agent.permissions.network
   if (reqNetwork && !agent.permissions.network) {
     denied.push('network')
   } else {
