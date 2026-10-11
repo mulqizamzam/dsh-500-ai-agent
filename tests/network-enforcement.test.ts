@@ -301,20 +301,44 @@ print(json.dumps(out))
         // Network probe: a fresh netns means connect() to 1.1.1.1 fails.
         expect(parsed.network).toBe('blocked')
         // Filesystem probe: a write to a host-writable path OUTSIDE the agent
-        // root is denied because --ro-bind / / makes the host read-only and
-        // --bind <root> <root> grants write only under the agent root.
+        // root is denied because --ro-bind / / makes the host read-only.
         expect(parsed.host_write).toBe('denied')
-        // The agent's own root must remain writable.
-        expect(parsed.root_write).toBe('allowed')
+        // The default-deny filesystem grant (null) binds the agent root
+        // READ-ONLY too: the agent can read its own code but write nothing.
+        expect(parsed.root_write).toBe('denied')
         // Sanity: exactly one spawn, argv[0] is bwrap, and the full profile
-        // (not just --unshare-net) is present.
+        // (not just --unshare-net) is present — with the root read-only.
         expect(spawnLog.length).toBe(1)
         const invoked = spawnLog[0].split(' ')
         expect(invoked[0]).toBe('bwrap')
         expect(invoked).toContain('--unshare-net')
         expect(invoked).toContain('--ro-bind')
-        expect(invoked).toContain('--bind')
+        expect(invoked).not.toContain('--bind')
         expect(invoked).toContain('--die-with-parent')
+      }, 30_000)
+
+      it('filesystem opt-in (real): a readwrite grant makes the agent root writable', async () => {
+        const rootDir = bridgeWorkDir
+        const entry = makeProbeEntry(rootDir)
+        const services = makeBridgeServices(rootDir, undefined)
+        const result = await runAgent(entry, { agent_id: 'probe', task: 'probe', context: {
+          escape: ESCAPE_SENTINELS[0],
+          inside: join(rootDir, 'inside.txt'),
+        } }, services, {
+          allowed: true,
+          denied: [],
+          granted: { network: false, filesystem: { mode: 'readwrite', paths: ['.'] }, shell: false, secrets: [] },
+        })
+        expect(result.status).toBe('success')
+        if (result.status !== 'success') return
+        const parsed = result.result as Record<string, string>
+        expect(parsed.network).toBe('blocked')
+        // Host confinement still holds — only the agent root is writable.
+        expect(parsed.host_write).toBe('denied')
+        // The explicit readwrite grant is what makes the root writable.
+        expect(parsed.root_write).toBe('allowed')
+        expect(spawnLog.length).toBe(1)
+        expect(spawnLog[0].split(' ')).toContain('--bind')
       }, 30_000)
 
       it('DEFECT 1 (real): bridge with bwrap sandbox injects --unshare-net instead of nesting', async () => {

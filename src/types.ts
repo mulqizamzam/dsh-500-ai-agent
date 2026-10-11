@@ -127,6 +127,15 @@ export interface AgentRegistryEntry {
 export type AgentRegistry = Record<string, AgentRegistryEntry>
 
 /**
+ * Enforcement completeness for a confined run. Mirrors the DSH sandbox
+ * vocabulary (`SandboxEnforcement`) so a provider value can be carried
+ * through without a cast. `full` means the policy holds on every promised
+ * effect; `partial` means some effect is unguarded and the caller must not
+ * treat this as an absolute boundary.
+ */
+export type EnforcementLevel = 'full' | 'partial'
+
+/**
  * Parse-time result: either success with registry data, or a list of validation errors.
  * Never throws — the bridge catches errors and returns structured failure.
  */

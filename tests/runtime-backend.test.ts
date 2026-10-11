@@ -101,12 +101,15 @@ describe('runtime-backend: local backend', () => {
 })
 
 describe('runtime-backend: sandbox confine integration', () => {
-  it('uses sandbox.confine() and records enforcement (marked partial when network layer applies)', () => {
+  it('injects --unshare-net INTO an existing bwrap profile instead of nesting it', () => {
     const r = buildRuntimeConfig({
       ...BASE,
       permissions: { network: false },
       sandbox: {
         confine: (argv, _policy) => ({
+          // No '--' separator in this mock — the boundary must still be
+          // computed from the first non-flag argument, never from the
+          // command tail.
           argv: ['bwrap', '--ro-bind', '/', '/', ...argv],
           enforcement: 'full' as const,
           denialSignatures: ['EROFS', 'EACCES'],
@@ -116,13 +119,86 @@ describe('runtime-backend: sandbox confine integration', () => {
       backend: 'bubblewrap',
     })
     expect(r.confined).toBe(true)
-    // The network layer re-wraps argv, so the provider's own enforcement claim
-    // is no longer authoritative for the final shape — we downgrade to partial.
-    expect(r.enforcement).toBe('partial')
+    // The injected profile keeps everything the sandbox granted, so its
+    // 'full' claim still stands — the old re-wrap downgraded to 'partial'
+    // because it lost the profile; injecting into it loses nothing.
+    expect(r.enforcement).toBe('full')
     expect(r.denialSignatures).toContain('EROFS')
-    // When both sandbox AND network-denied: the wrapper layers on top.
-    expect(r.argv[0]).toBe('bwrap')
-    expect(r.argv).toContain('--unshare-net')
+    // Nested-wrapper killer: `bwrap` and `--unshare-net` each appear exactly
+    // once, and the payload survives the flags in its original order.
+    expect(r.argv.filter((a) => a === 'bwrap')).toHaveLength(1)
+    expect(r.argv.filter((a) => a === '--unshare-net')).toHaveLength(1)
+    const pyIdx = r.argv.indexOf('/usr/bin/python3')
+    expect(pyIdx).toBeGreaterThan(1)
+    expect(r.argv.slice(pyIdx)).toEqual(['/usr/bin/python3', '/tmp/test-agent/agent.py', '--task', 'x'])
+  })
+
+  it('leaves an argv that already denies network untouched', () => {
+    const r = buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false },
+      sandbox: {
+        confine: (argv, policy) => {
+          expect(policy.mode).toBe('read-only')
+          return {
+            argv: ['bwrap', '--unshare-net', '--ro-bind', '/', '/', '--', ...argv],
+            enforcement: 'full' as const,
+            denialSignatures: ['EROFS'],
+            runnerFailureRules: [],
+          }
+        },
+      },
+      backend: 'bubblewrap',
+    })
+    expect(r.argv.filter((a) => a === '--unshare-net')).toHaveLength(1)
+    expect(r.argv.indexOf('--unshare-net')).toBe(1)
+    expect(r.enforcement).toBe('full')
+  })
+
+  it('maps the filesystem grant into the sandbox policy mode', () => {
+    const seen: string[] = []
+    const probe = (argv: readonly string[]) => ({
+      argv: ['bwrap', '--ro-bind', '/', '/', '--', ...argv],
+      enforcement: 'full' as const,
+      denialSignatures: [] as readonly string[],
+      runnerFailureRules: [] as const,
+    })
+    buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false },
+      sandbox: { confine: (argv, policy) => { seen.push(policy.mode); return probe(argv) } },
+      backend: 'bubblewrap',
+    })
+    buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false, filesystemWritable: true },
+      sandbox: { confine: (argv, policy) => { seen.push(policy.mode); return probe(argv) } },
+      backend: 'bubblewrap',
+    })
+    expect(seen).toEqual(['read-only', 'workspace-write'])
+  })
+
+  it('reports a runner gap when the sandbox returns a non-bwrap runner', () => {
+    const r = buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false },
+      sandbox: {
+        confine: (argv, _policy) => ({
+          argv: ['/usr/local/bin/landlock-run', '--mode', 'read-only', '--', ...argv],
+          enforcement: 'full' as const,
+          denialSignatures: ['permission denied'],
+          runnerFailureRules: [],
+        }),
+      },
+      backend: 'bubblewrap',
+    })
+    expect(r.confined).toBe(true)
+    // The gap is reported, not papered over: no bwrap is injected around a
+    // runner whose flag dialect is not bwrap's.
+    expect(r.enforcement).toBe('partial')
+    expect(r.argv).not.toContain('--unshare-net')
+    expect(r.argv.filter((a) => a === 'bwrap')).toHaveLength(0)
+    expect(r.argv[0]).toBe('/usr/local/bin/landlock-run')
   })
 
   it('uses sandbox.confine() without network wrapper when granted', () => {
@@ -141,6 +217,28 @@ describe('runtime-backend: sandbox confine integration', () => {
     })
     expect(r.confined).toBe(true)
     expect(r.argv).not.toContain('--unshare-net')
+    expect(r.enforcement).toBe('full')
+  })
+
+  it('binds the agent root read-only in the fallback profile unless readwrite is granted', () => {
+    const readOnly = buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false },
+      sandbox: undefined,
+      backend: 'bubblewrap',
+    })
+    expect(readOnly.argv).toContain('--ro-bind')
+    expect(readOnly.argv).not.toContain('--bind')
+
+    const writable = buildRuntimeConfig({
+      ...BASE,
+      permissions: { network: false, filesystemWritable: true },
+      sandbox: undefined,
+      backend: 'bubblewrap',
+    })
+    const bindIdx = writable.argv.indexOf('--bind')
+    expect(bindIdx).toBeGreaterThan(-1)
+    expect(writable.argv.slice(bindIdx, bindIdx + 3)).toEqual(['--bind', '/tmp/test-agent', '/tmp/test-agent'])
   })
 })
 

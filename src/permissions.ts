@@ -22,7 +22,12 @@ import type { AgentRegistryEntry, AgentPermissions } from './types.js'
 
 export interface PermissionRequest {
   network?: boolean
-  filesystem?: 'read' | 'readwrite' | null
+  /**
+   * Requested filesystem mode. Mirrors the registry vocabulary (including
+   * 'none' for an explicit no-access request); a request narrower than the
+   * agent's grant is honoured, never widened.
+   */
+  filesystem?: 'read' | 'readwrite' | 'none' | null
   filesystemPaths?: string[]
   shell?: boolean
   secrets?: string[]
@@ -95,6 +100,16 @@ export function evaluatePermission(
     ) {
       // Requester wants rw but agent only grants r/o
       denied.push('filesystem')
+    } else if (reqFsMode === 'none') {
+      // Requester explicitly asks for no access at all: honoured verbatim,
+      // never widened back to the agent's declaration.
+      granted.filesystem = { mode: 'none', paths: [] }
+    } else if (reqFsMode === 'read' && agentFs.mode === 'readwrite') {
+      // Requester asks narrower than the agent declares: honour the request.
+      // The grant now drives real confinement (bwrap bind mode / sandbox
+      // policy), so widening a "read" request back to readwrite would
+      // silently hand out writes the caller did not ask for.
+      granted.filesystem = { mode: 'read', paths: agentFs.paths }
     } else if (reqFsPaths.length > 0 && agentFs.paths) {
       // Validate each requested path is within the agent's declared paths
       const allowedPaths = new Set(agentFs.paths)

@@ -8,9 +8,11 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Readable } from 'node:stream'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
-import type { AgentRegistryEntry } from './types.js'
+import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+import type { AgentRegistryEntry, EnforcementLevel } from './types.js'
 import { ensureVenv } from './runtime-manager.js'
 import type { PermissionResult } from './permissions.js'
+import { applyNetworkDenial } from './network-denial.js'
 
 /** Output shape of a successful agent execution. */
 export interface AgentResult {
@@ -140,7 +142,7 @@ export async function runAgent(
 
   // ── 4. Spawn (with optional sandbox confinement) ────────────────────────────
   let handle: SubprocessHandle | null = null
-  let enforcement: string | undefined
+  let enforcement: EnforcementLevel | undefined
   let denialSignatures: readonly string[] = []
 
   try {
@@ -148,65 +150,66 @@ export async function runAgent(
     // the host's bwrap/Landlock runner. The runner replaces spec.argv[0] with
     // the wrapped argv — the DSH subprocess service spawns a *new* process
     // whose argv[0] is the runner, not Python directly.
-    let finalArgv = spec.argv
+    let finalArgv: string[] = [...spec.argv]
 
-    // Network denial is enforced at the process level: a fresh network
-    // namespace means the child cannot reach any external socket — DNS,
-    // HTTP, anything. This is the ONLY way to turn "network: false" from a
-    // cosmetic env-var gap into an actual barrier. `--unshare-net` is a
-    // bwrap flag, so HOW it can be layered depends on which runner is in
-    // front of the argv — see the three cases below.
+    // The sandbox's own vocabulary governs FILE effects only, so the policy
+    // mirrors the agent's evaluated filesystem grant: an explicit readwrite
+    // grant is workspace-write (workspace + tmp writable); the default-deny
+    // grants (null, 'read', 'none') are read-only, which the backend renders
+    // as read-only binds with no writable root. Without this mapping every
+    // agent silently received write access to its own root, no matter what
+    // the registry declared.
+    const rootWritable = permissionResult.granted.filesystem?.mode === 'readwrite'
     if (services.sandbox) {
-      const policy = {
-        mode: 'workspace-write' as const,
+      const policy: SandboxPolicy = {
+        mode: rootWritable ? 'workspace-write' : 'read-only',
         workspaceRoot: resolvedRoot,
       }
       const confinedResult = await services.sandbox.confine(finalArgv, policy)
       finalArgv = confinedResult.argv
       enforcement = confinedResult.enforcement
       denialSignatures = confinedResult.denialSignatures
-      services.logger.info(`[${executionId}] sandbox=on enforcement=${enforcement} denial_sigs=${denialSignatures.length}`)
+      services.logger.info(
+        `[${executionId}] sandbox=on mode=${policy.mode} enforcement=${enforcement} denial_sigs=${denialSignatures.length}`,
+      )
     }
+
+    // Network denial is enforced at the process level: a fresh network
+    // namespace means the child cannot reach any external socket — DNS,
+    // HTTP, anything. This is the ONLY way to turn "network: false" from a
+    // cosmetic env-var gap into an actual barrier. `--unshare-net` is a
+    // bwrap flag, so HOW it can be layered depends on which runner is in
+    // front of the argv — the shared helper owns every case.
     if (!permissionResult.granted.network) {
-      if (finalArgv[0] === 'bwrap') {
-        // The runner IS bwrap: `--unshare-net` is one of its own flags, so it
-        // joins the existing profile ahead of the `--` separator. Wrapping the
-        // bwrap argv in a second bwrap does not nest: the inner runner would
-        // re-exec bwrap as the payload and the resulting profile is not a
-        // reliable confinement.
-        const separator = finalArgv.indexOf('--')
-        const profileFlags = separator === -1 ? finalArgv.slice(1) : finalArgv.slice(1, separator)
-        if (profileFlags.includes('--unshare-net')) {
+      const denied = applyNetworkDenial({
+        argv: finalArgv,
+        sandboxUsed: services.sandbox !== undefined,
+        agentRoot: resolvedRoot,
+        rootWritable,
+      })
+      finalArgv = denied.argv
+      if (denied.enforcement !== undefined) {
+        // A non-bwrap runner carries the network gap; its file confinement
+        // still stands, so this is a downgrade, not a failure.
+        enforcement = denied.enforcement
+      }
+      switch (denied.action) {
+        case 'injected':
+          services.logger.info(`[${executionId}] network=denied unshare-net active runner=bwrap injected`)
+          break
+        case 'already-present':
           services.logger.info(`[${executionId}] network=denied unshare-net already in bwrap profile`)
-        } else {
-          finalArgv = ['bwrap', '--unshare-net', ...finalArgv.slice(1)]
-          services.logger.info(`[${executionId}] network=denied unshare-net active`)
-        }
-      } else if (services.sandbox) {
-        // A non-bwrap runner (Landlock, Seatbelt, windows-acl) is in front.
-        // Its flag dialect is not bwrap's, so `--unshare-net` cannot be
-        // injected, and a bwrap wrapper around it would not nest. Rather than
-        // emit an argv that looks confined but is not, report the gap: the
-        // filesystem policy is still enforced, the network denial is NOT.
-        enforcement = 'partial'
-        services.logger.warn(
-          `[${executionId}] network=denied but runner="${finalArgv[0]}" is not bwrap: network denial NOT enforced, enforcement=partial`,
-        )
-      } else {
-        // No sandbox provider. `--unshare-net` alone would leave the agent
-        // with full read access to the host filesystem, so build the full
-        // profile: host read-only, a private /dev, a tmpfs /tmp, and the
-        // agent root as the only writable path.
-        finalArgv = [
-          'bwrap', '--unshare-net',
-          '--ro-bind', '/', '/',
-          '--dev', '/dev',
-          '--tmpfs', '/tmp',
-          '--bind', resolvedRoot, resolvedRoot,
-          '--die-with-parent',
-          ...finalArgv,
-        ]
-        services.logger.info(`[${executionId}] network=denied unshare-net active fallback=bwrap-fallback root=${resolvedRoot}`)
+          break
+        case 'runner-gap':
+          services.logger.warn(
+            `[${executionId}] network=denied but runner="${finalArgv[0]}" is not bwrap: network denial NOT enforced, enforcement=partial`,
+          )
+          break
+        case 'fallback-profile':
+          services.logger.info(
+            `[${executionId}] network=denied unshare-net active fallback=bwrap-fallback root=${resolvedRoot} root_bind=${rootWritable ? 'rw' : 'ro'}`,
+          )
+          break
       }
     }
 

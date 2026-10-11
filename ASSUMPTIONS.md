@@ -102,3 +102,11 @@ Jika fakta implementasi aktual bertentangan dengan asumsi di atas, fakta source 
     subset dari declared. Ditolak jika ada nama di luar declared.
 13. **`list_agents` nama tabrakan dengan host** — `dsh-subagent-control`
     sudah memakai `list_agents`. Plugin memakai `dsh500_list_agents`.
+
+## Koreksi 2026-10-11 (terukur ulang, mengalahkan asumsi lama)
+
+1. **Katalog upstream kini WRITABLE** — `touch` probe di `/home/administrator/agent-workspace/project/500-AI-Agents-Projects/agents/21-pii-sanitization-agent/` berhasil (file probe langsung dihapus). Asumsi Fase 3 #9 (root mount RO, `ensureVenv` EROFS) tidak lagi berlaku; lokasi fallback `<workspaceRoot>/venvs/<agentId>` tetap ada sebagai jaring pengaman dan sudah teruji.
+2. **`docker` di PATH bukan runtime yang berfungsi** — shim WSL Docker Desktop, `docker --version` exit 1 di distro ini. Backend `container` karena itu mengembalikan sinyal `error` (fail-closed), bukan run. Klaim BUILD_REPORT "Docker 29.8.1 available" adalah keadaan 2026-10-04, bukan hari ini.
+3. **`ensurepip` tidak tersedia, pip sistem tersedia** — `/usr/bin/python3.14` tidak punya modul `ensurepip`; `python3 -m venv` gagal exit 1 sementara `python3 -m pip` 26.2.1 berfungsi. `ensureVenv` kini fallback ke `python3 -m venv --without-pip` + `python3 -m pip --python <venv>/bin/python install -r requirements.txt` (isolasi per-agent tetap: paket masuk ke site-packages venv tersebut).
+4. **Default filesystem kini benar-benar default-deny** — dulu bridge selalu memakai policy `workspace-write`/`--bind` sehingga setiap agent bisa menulis root-nya sendiri walau `filesystem: null`. Sekarang grant `null`/`read`/`none` → bind read-only; hanya `readwrite` (opt-in eksplisit di registry; 3 agent: meeting-notes, unit-test-generator, documentation-writer) → bind rw.
+5. **Injeksi `--unshare-net` kini tunggal implementasi** (`src/network-denial.ts`) — sebelumnya logikanya diduplikasi di `bridge.ts` dan `runtime-backend.ts`; fix DEFECT 1 hanya masuk ke `bridge.ts`, dan bentuk runner non-bwrap (Landlock/Seatbelt) dilaporkan sebagai `enforcement: partial` alih-alih diverifikasi.

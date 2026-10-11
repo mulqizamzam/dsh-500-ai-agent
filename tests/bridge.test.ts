@@ -385,7 +385,6 @@ describe('bridge.runAgent', () => {
       '--ro-bind', '/', '/',
       '--dev', '/dev',
       '--tmpfs', '/tmp',
-      '--bind', '/agent-root', '/agent-root',
       '--die-with-parent',
     ]) {
       expect(spec.argv, `missing bwrap flag ${flag}`).toContain(flag)
@@ -394,6 +393,52 @@ describe('bridge.runAgent', () => {
     const pyIdx = spec.argv.indexOf('python3')
     expect(pyIdx).toBeGreaterThan(0)
     expect(spec.argv.slice(pyIdx)).toEqual(['python3', '/agent-root/agent.py', '--task', 'x'])
+  })
+
+  it('filesystem default-deny: a null grant binds the agent root READ-ONLY', async () => {
+    const services = makeServices({ exitCode: 0, signal: null, stdout: '{"ok": true}' })
+
+    await runAgent(
+      makeEntry({ root: '/agent-root' }),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services,
+      // granted.filesystem: null — the default-deny grant every current
+      // registry entry carries.
+      networkDeniedGrant,
+    )
+
+    const spec = services.spawnedSpecs[0].spec
+    // The root itself must not be writable: --ro-bind root root, never --bind.
+    const rootBindIdx = spec.argv.indexOf('/agent-root', spec.argv.indexOf('--tmpfs') + 2)
+    const bindFlag = spec.argv[rootBindIdx - 1]
+    expect(bindFlag).toBe('--ro-bind')
+    expect(spec.argv).not.toContain('--bind')
+  })
+
+  it('filesystem opt-in: a readwrite grant binds the agent root READ-WRITE', async () => {
+    const services = makeServices({ exitCode: 0, signal: null, stdout: '{"ok": true}' })
+
+    await runAgent(
+      makeEntry({ root: '/agent-root' }),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services,
+      {
+        allowed: true,
+        denied: [],
+        granted: {
+          network: false,
+          filesystem: { mode: 'readwrite', paths: ['.'] },
+          shell: false,
+          secrets: [],
+        },
+      },
+    )
+
+    const spec = services.spawnedSpecs[0].spec
+    // An explicit readwrite grant is the ONLY way the root becomes writable.
+    expect(spec.argv).toContain('--bind')
+    const bindIdx = spec.argv.indexOf('--bind')
+    expect(spec.argv.slice(bindIdx, bindIdx + 3)).toEqual(['--bind', '/agent-root', '/agent-root'])
   })
 
   it('DEFECT 3: does not label the sandbox infrastructure as an agent tool in metadata.tools_used', async () => {
@@ -413,6 +458,74 @@ describe('bridge.runAgent', () => {
       // concern and must not pollute the agent-tool list.
       expect(result.metadata.tools_used).not.toContain('sandbox')
     }
+  })
+
+  // ── Sandbox policy mirrors the evaluated filesystem grant ──────────────────
+  //
+  // The DSH sandbox vocabulary covers file effects only, so the bridge's
+  // job is to translate `granted.filesystem` into the right mode: the
+  // default-deny grants (null / 'read' / 'none') become 'read-only' and only
+  // an explicit 'readwrite' grant becomes 'workspace-write'. Before this
+  // mapping, every agent was confined as workspace-write — full write to its
+  // root — regardless of what the registry declared.
+
+  function policyCapturingSandbox() {
+    const seen: Array<{ mode: string; workspaceRoot: string }> = []
+    return {
+      seen,
+      sandbox: {
+        confine: async (_argv: readonly string[], policy: { mode: string; workspaceRoot: string }) => {
+          seen.push(policy)
+          return {
+            argv: ['bwrap', '--ro-bind', '/', '/', '--', 'python3', '/tmp/agent.py'],
+            enforcement: 'full' as const,
+            denialSignatures: [],
+            runnerFailureRules: [],
+          }
+        },
+      },
+    }
+  }
+
+  it('sandbox policy: default-deny filesystem grant → read-only mode', async () => {
+    const services = makeServices({ exitCode: 0, signal: null, stdout: '{"ok": true}' })
+    const capture = policyCapturingSandbox()
+    services.sandbox = capture.sandbox
+
+    await runAgent(
+      makeEntry(),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services as unknown as BridgeServices,
+      networkDeniedGrant,
+    )
+
+    expect(capture.seen).toHaveLength(1)
+    expect(capture.seen[0].mode).toBe('read-only')
+    expect(capture.seen[0].workspaceRoot).toBe('/tmp')
+  })
+
+  it('sandbox policy: readwrite grant → workspace-write mode', async () => {
+    const services = makeServices({ exitCode: 0, signal: null, stdout: '{"ok": true}' })
+    const capture = policyCapturingSandbox()
+    services.sandbox = capture.sandbox
+
+    await runAgent(
+      makeEntry(),
+      { agent_id: 'pii-sanitization', task: 'x' },
+      services as unknown as BridgeServices,
+      {
+        allowed: true,
+        denied: [],
+        granted: {
+          network: true,
+          filesystem: { mode: 'readwrite', paths: ['.'] },
+          shell: false,
+          secrets: [],
+        },
+      },
+    )
+
+    expect(capture.seen[0].mode).toBe('workspace-write')
   })
 })
 

@@ -22,20 +22,26 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import { loadRegistry } from '../lib/registry.js'
 import { BRIDGE_E2E_TIMEOUT_MS, VITEST_E2E_BUDGET_MS } from './e2e-constants.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-/** Resolve the real agent root without assuming a fixed layout. */
+/**
+ * Resolve the agent root from the registry itself.
+ *
+ * The registry is the single source of truth for where an agent lives: the
+ * parser already resolves every `root` to an absolute path (relative roots are
+ * anchored at the registry file's directory, not at the host CWD). Probing
+ * guessed sibling paths here instead is what broke this suite after the
+ * catalog moved: registry and docs were re-pointed, this list was not, and
+ * every run died in beforeAll with `root === null`.
+ */
 function agentRoot(): string | null {
-  const candidates = [
-    join(here, '../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent'),
-    join(here, '../../../../500-AI-Agents-Projects/agents/21-pii-sanitization-agent'),
-  ]
-  for (const c of candidates) {
-    if (existsSync(join(c, 'agent.py'))) return c
-  }
-  return null
+  const reg = loadRegistry(join(here, '..', 'agents', 'registry.yaml'))
+  if (!reg.ok) return null
+  const root = reg.registry['pii-sanitization']?.root
+  return root && existsSync(join(root, 'agent.py')) ? root : null
 }
 
 /** Minimum spawn service the bridge needs: a real child process. */

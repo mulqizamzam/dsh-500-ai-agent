@@ -32,18 +32,20 @@
 
 import type { SandboxPolicy, ConfinedArgv } from '@deepseek-ai/dsh-sandbox'
 import { buildContainerConfig } from './container-runtime.js'
+import type { EnforcementLevel } from './types.js'
+import { applyNetworkDenial } from './network-denial.js'
+
+export type { EnforcementLevel } from './types.js'
 
 /** How the bridge decides to spawn the agent process. */
 export type RuntimeBackend = 'local' | 'bubblewrap' | 'container'
 
 /**
- * Enforcement completeness for a confined run. Mirrors the DSH sandbox
- * vocabulary (`SandboxEnforcement`) so a provider value can be carried
- * through without a cast. `full` means the policy holds on every promised
- * effect; `partial` means some effect is unguarded and the caller must not
- * treat this as an absolute boundary.
+ * Enforcement completeness for a confined run now lives in ./types.js (the
+ * shared type home) so the bridge, this module, and the network-denial
+ * helper cannot each carry a slightly different copy; re-exported above for
+ * backwards compatibility.
  */
-export type EnforcementLevel = 'full' | 'partial'
 
 /**
  * Result of configuring a runtime backend for one agent invocation.
@@ -84,8 +86,8 @@ export interface RuntimeBackendOpts {
   entrypoint: string
   /** CLI args assembled by the bridge. */
   args: string[]
-  /** Evaluated permissions — controls network isolation. */
-  permissions: { network: boolean }
+  /** Evaluated permissions — controls network isolation and the filesystem grant. */
+  permissions: { network: boolean; filesystemWritable?: boolean }
   /** DSH sandbox provider, if available in this context. */
   sandbox?: { confine: (argv: readonly string[], policy: SandboxPolicy) => ConfinedArgv }
   /** Plugin runtime-backend config, defaults to 'bubblewrap'. */
@@ -106,9 +108,11 @@ export interface RuntimeBackendOpts {
  *
  * Local: returns argv as-is (python3 + entrypoint + args).
  * Bubblewrap:
- *   - If sandbox available: call sandbox.confine() → bwrap or Landlock runner.
- *   - If network denied: prepend `bwrap --unshare-net` to the raw argv.
- *   - Combines both when both conditions hold.
+ *   - If sandbox available: call sandbox.confine() → bwrap or Landlock runner,
+ *     under the policy matching the agent's filesystem grant.
+ *   - If network denied: the shared applyNetworkDenial() helper injects
+ *     --unshare-net into the existing runner, reports a non-bwrap runner gap,
+ *     or builds the full fallback profile — depending on the runner shape.
  * Container: delegates to `buildContainerConfig()`, which builds a real
  *   `docker|podman run --network=none --cap-drop=ALL --read-only …` argv
  *   when a runtime binary exists on this host, and otherwise returns an
@@ -171,13 +175,20 @@ export function buildRuntimeConfig(opts: RuntimeBackendOpts): RuntimeBackendConf
   let enforcement: EnforcementLevel | undefined
   let denialSignatures: string[] = []
   let argv = baseArgv
+  const rootWritable = opts.permissions.filesystemWritable === true
 
   // Path 1: DSH sandbox provider — gives full file + pid isolation + optional
   // network isolation (the host's backend decides whether --unshare-net is
   // appended; we don't double-add it).
+  //
+  // The sandbox's own vocabulary governs FILE effects only, so the policy
+  // mirrors the agent's evaluated filesystem grant: an explicit readwrite
+  // grant is `workspace-write` (workspace + tmp writable); the default-deny
+  // grants (null, 'read', 'none') are `read-only`, which the backend renders
+  // as read-only binds with no writable root.
   if (sandbox) {
     const policy: SandboxPolicy = {
-      mode: 'workspace-write' as const,
+      mode: rootWritable ? 'workspace-write' : 'read-only',
       workspaceRoot: agentRoot,
     }
     const confinedResult = sandbox.confine(baseArgv, policy)
@@ -187,32 +198,17 @@ export function buildRuntimeConfig(opts: RuntimeBackendOpts): RuntimeBackendConf
     denialSignatures = [...confinedResult.denialSignatures]
   }
 
-  // Path 2: network denial — add --unshare-net as an ADDITIONAL bwrap flag
-  // when no sandbox provider was used (or to layer on top of it).
+  // Path 2: network denial. HOW --unshare-net can be layered depends on
+  // which runner is in front of the argv — the shared helper owns all three
+  // cases (inject into an existing bwrap profile / report a non-bwrap
+  // runner gap / build the full fallback profile).
   if (noNetwork) {
-    // If the sandbox already produced a confined argv, append --unshare-net
-    // to it (bwrap supports this). Otherwise we wrap with our own bwrap call.
-    if (confined) {
-      // Re-wrap the confined argv through bwrap with --unshare-net.
-      // The DSH sandbox backend already selected bwrap or Landlock; if it
-      // was bwrap, we can ask it to also unshare-net. Unfortunately the
-      // confine() API doesn't expose a "also add unshare-net" hook, so we
-      // re-run the bwrap profile ourselves.
-      argv = ['bwrap', '--unshare-net', ...argv]
-      // Enforcement info is lost — mark as partial so the caller knows.
-      enforcement = 'partial'
-    } else {
-      // No sandbox provider: use our own minimal bwrap profile.
-      argv = [
-        'bwrap',
-        '--unshare-net',
-        '--ro-bind', '/', '/',
-        '--dev', '/dev',
-        '--tmpfs', '/tmp',
-        '--bind', agentRoot, agentRoot,
-        '--die-with-parent',
-        ...baseArgv,
-      ]
+    const denied = applyNetworkDenial({ argv, sandboxUsed: sandbox !== undefined, agentRoot, rootWritable })
+    argv = denied.argv
+    if (denied.enforcement !== undefined) {
+      // A non-bwrap runner carries the network gap; its file confinement
+      // still stands, so this is a downgrade, not a failure.
+      enforcement = denied.enforcement
     }
   }
 

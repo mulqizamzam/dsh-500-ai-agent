@@ -152,4 +152,50 @@ describe('permissions.evaluatePermission', () => {
     expect(result.denied).toContain('network')
     expect(result.denied).toContain('shell')
   })
+
+  // ── Filesystem narrowing (the grant now drives real confinement) ──────────
+  //
+  // `granted.filesystem` decides the bwrap bind mode / sandbox policy, so a
+  // narrower request must never be widened back to the agent's declaration.
+
+  it('a silent request grants exactly what the agent declares', () => {
+    const agent = makeAgent({
+      permissions: {
+        network: false,
+        filesystem: { mode: 'readwrite', paths: ['.'] },
+        shell: false,
+        secrets: [],
+      },
+    })
+    const result = evaluatePermission(agent, {})
+    expect(result.granted.filesystem).toEqual({ mode: 'readwrite', paths: ['.'] })
+  })
+
+  it('narrows a readwrite declaration to read when the request asks only for read', () => {
+    const agent = makeAgent({
+      permissions: {
+        network: false,
+        filesystem: { mode: 'readwrite', paths: ['.'] },
+        shell: false,
+        secrets: [],
+      },
+    })
+    const result = evaluatePermission(agent, { filesystem: 'read' })
+    expect(result.allowed).toBe(true)
+    expect(result.granted.filesystem?.mode).toBe('read')
+  })
+
+  it('grants no filesystem at all when the request asks for none', () => {
+    const agent = makeAgent({
+      permissions: {
+        network: false,
+        filesystem: { mode: 'readwrite', paths: ['.'] },
+        shell: false,
+        secrets: [],
+      },
+    })
+    const result = evaluatePermission(agent, { filesystem: 'none' })
+    expect(result.allowed).toBe(true)
+    expect(result.granted.filesystem).toEqual({ mode: 'none', paths: [] })
+  })
 })

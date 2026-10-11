@@ -107,7 +107,13 @@ documentation-writer:
     - general
   permissions:
     network: true
-    filesystem: null
+    # Writes its output artifact into its own root (agent.py open(..., "w")).
+    # Explicit opt-in: the bridge default-deny binds the root READ-ONLY,
+    # so only an agent that declares this grant may write there.
+    filesystem:
+      mode: readwrite
+      paths:
+        - "."
     shell: false
     secrets:
       - OPENAI_API_KEY
@@ -317,7 +323,13 @@ meeting-notes:
     - general
   permissions:
     network: true
-    filesystem: null
+    # Writes its output artifact into its own root (agent.py open(..., "w")).
+    # Explicit opt-in: the bridge default-deny binds the root READ-ONLY,
+    # so only an agent that declares this grant may write there.
+    filesystem:
+      mode: readwrite
+      paths:
+        - "."
     shell: false
     secrets:
       - OPENAI_API_KEY
@@ -455,7 +467,13 @@ unit-test-generator:
     - general
   permissions:
     network: true
-    filesystem: null
+    # Writes its output artifact into its own root (agent.py open(..., "w")).
+    # Explicit opt-in: the bridge default-deny binds the root READ-ONLY,
+    # so only an agent that declares this grant may write there.
+    filesystem:
+      mode: readwrite
+      paths:
+        - "."
     shell: false
     secrets:
       - OPENAI_API_KEY

@@ -19,10 +19,22 @@ import { describe, it, expect } from 'vitest'
 import { buildContainerConfig, findAvailableRuntime } from '../lib/container-runtime.js'
 
 describe('container-runtime: findAvailableRuntime', () => {
+  // The probe's contract is "first candidate whose `<binary> --version` exits
+  // 0". Asserting that against a HOST binary (e.g. expecting 'docker') couples
+  // this gate to machine state: on a WSL host the Docker Desktop shim is on
+  // PATH but exits 1 inside the distro, so the probe correctly answers null
+  // and a host-truth assertion here fails while production behaves right.
+  // `node` is available by construction (this repo's own runtime), so it pins
+  // the ordering semantics without depending on anything optional.
   it('returns the first candidate that exits 0 on --version', () => {
-    // Real probe on this host returns 'docker' (verified separately).
-    const found = findAvailableRuntime(['docker', 'podman'])
-    expect(found).toBe('docker')
+    const found = findAvailableRuntime(['node', '/nonexistent/a'])
+    expect(found).toBe('node')
+  })
+
+  it('skips a candidate that is on PATH but fails --version', () => {
+    // A binary that exists yet exits non-zero must not be selected.
+    const found = findAvailableRuntime(['/nonexistent/a', 'node'])
+    expect(found).toBe('node')
   })
 
   it('returns null when neither candidate is available', () => {

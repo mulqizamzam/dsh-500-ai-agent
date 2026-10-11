@@ -54,15 +54,17 @@ Tidak ada akun, layanan berbayar, atau signup yang diwajibkan untuk memasang
 plugin. Kunci API hanya dibutuhkan saat memanggil agent LLM, dan itu discussed
 di seksi 4.
 
-Nilai terukur di host ini pada 2026-10-07:
+Nilai terukur di host ini pada 2026-10-11:
 
 | Tool | Nilai terukur |
 |---|---|
 | `node` | v24.19.0 |
 | `npm` | 11.17.0 |
 | `python3` | Python 3.14.4 |
+| `python3 -m pip` | 26.2.1 (bekerja) |
+| `python3 -m ensurepip` | **tidak ada** — `python3 -m venv` gagal; plugin punya fallback `--without-pip` + bootstrap pip (`src/runtime-manager.ts`) |
 | `bwrap` | `/usr/bin/bwrap`, bubblewrap 0.11.1 |
-| `docker` | `/usr/bin/docker` ada |
+| `docker` | ada di PATH (`/mnt/c/Program Files/Docker/...` via WSL), tetapi `docker --version` **exit 1** di distro ini — probe containerruntime jadi `null`, backend `container` mengembalikan sinyal `error` |
 | `podman` | tidak ditemukan |
 
 Dua hal penting untuk pemula. Pertama, registry meminta Python 3.11 sementara
@@ -545,8 +547,8 @@ dsh-500-ai-agent/
   .gitignore              daftar file yang tidak di-commit
   agent_contract.py       sumber kebenaran kontrak stdout, disalin ke tiap agent
   agents/registry.yaml    daftar 17 agent, sumber kebenaran
-  src/                    kode TypeScript plugin, 9 file
-  tests/                  13 file, 11 unit dan 2 e2e
+  src/                    kode TypeScript plugin, 10 file
+  tests/                  14 file, 13 unit dan 1 e2e
   PRD.md                  kebutuhan produk
   ASSUMPTIONS.md          asumsi proyek dan koreksi terhadapnya
   BUILD_REPORT.md         laporan build, angka test di dalamnya sudah basi
@@ -561,15 +563,16 @@ Isi `src/`, jumlah baris dari `wc -l`:
 
 | File | Baris | Fungsi | Perlu diedit pemula? |
 |---|---|---|---|
-| `src/index.ts` | 290 | Entry plugin, identitas, `Config`, pendaftaran dua tool | Baca dulu |
-| `src/types.ts` | 135 | Tipe status, permission, capability, entri registry | Baca bila menambah capability |
+| `src/index.ts` | 297 | Entry plugin, identitas, `Config`, pendaftaran dua tool | Baca dulu |
+| `src/types.ts` | 144 | Tipe status, permission, capability, entri registry | Baca bila menambah capability |
 | `src/registry.ts` | 279 | Baca dan validasi `agents/registry.yaml` | Baca dulu |
 | `src/router.ts` | 123 | Router keyword ke capability dan pemilihan agent | Baca dulu |
-| `src/permissions.ts` | 144 | Gerbang izin default-tutup | Baca dulu |
-| `src/bridge.ts` | 503 | Spawn proses, timeout, validasi output | Baca dulu, paling kompleks |
-| `src/runtime-manager.ts` | 147 | Siklus hidup venv per agent | Baca dulu |
-| `src/runtime-backend.ts` | 266 | `buildRuntimeConfig()` untuk backend `local`, `bubblewrap`, `container` | Baca dulu |
+| `src/permissions.ts` | 159 | Gerbang izin default-tutup | Baca dulu |
+| `src/bridge.ts` | 499 | Spawn proses, timeout, validasi output | Baca dulu, paling kompleks |
+| `src/runtime-manager.ts` | 187 | Siklus hidup venv per agent, termasuk fallback `ensurepip` | Baca dulu |
+| `src/runtime-backend.ts` | 262 | `buildRuntimeConfig()` untuk backend `local`, `bubblewrap`, `container` | Baca dulu |
 | `src/container-runtime.ts` | 161 | Builder argv `docker` atau `podman` | Baca dulu |
+| `src/network-denial.ts` | 127 | Satu implementasi injeksi `--unshare-net` untuk semua bentuk runner | Baca dulu |
 
 Dua file yang paling duluan disentuh pemula adalah `agents/registry.yaml` untuk
 menambah atau mengubah agent, dan `cordis.patch.yml` untuk mengubah konfigurasi
@@ -646,29 +649,34 @@ npm test
 npm run test:e2e
 ```
 
-Hasil terukur pada 2026-10-07 di host ini. Perintah `npm run test:all` keluar
-dengan exit code 0. Unit test lulus 11 file dengan 132 test:
+Hasil terukur pada 2026-10-11 di host ini. Perintah `npm run test:all` keluar
+dengan exit code 0. Unit test lulus 13 file dengan 155 test:
 
 | Area | File | Jumlah lulus |
 |---|---|---|
 | Capability routing | `tests/router.test.ts` | 36 |
 | Registry parse dan validasi | `tests/registry.test.ts` | 23 |
-| Bridge lifecycle | `tests/bridge.test.ts` | 16 |
-| Permission gate | `tests/permissions.test.ts` | 12 |
-| Runtime backend config | `tests/runtime-backend.test.ts` | 9 |
+| Bridge lifecycle | `tests/bridge.test.ts` | 20 |
+| Permission gate | `tests/permissions.test.ts` | 15 |
+| Runtime backend config | `tests/runtime-backend.test.ts` | 13 |
+| Container runtime | `tests/container-runtime.test.ts` | 9 |
 | Secret LLM agent | `tests/llm-agents.test.ts` | 9 |
-| Container runtime | `tests/container-runtime.test.ts` | 8 |
 | kontrak stdout agent | `tests/agent-contract.test.ts` | 8 |
-| Penolakan jaringan | `tests/network-enforcement.test.ts` | 6 |
+| Penolakan jaringan | `tests/network-enforcement.test.ts` | 7 |
+| Injeksi penolakan jaringan | `tests/network-denial.test.ts` | 6 |
 | Fallback jaringan | `tests/network-fallback.test.ts` | 3 |
 | Runtime manager venv | `tests/runtime-manager.test.ts` | 2 |
-| Total unit | | 132 |
+| Fallback venv tanpa `ensurepip` | `tests/runtime-manager-ensurepip.test.ts` | 4 |
+| Total unit | | 155 |
 
-Ditambah e2e 2 dari 2 lulus di `tests/e2e-pii-agent.test.ts` dengan durasi sekitar
-31 detik. Total 134 test.
+Ditambah e2e 2 dari 2 lulus di `tests/e2e-pii-agent.test.ts` dengan durasi
+sekitar 33 detik. Total 157 test. Verifikasi live di host ini pada 2026-10-11:
+`dsh500_list_agents` mengembalikan 17 agent, dan `run_agent` untuk
+`pii-sanitization` selesai `[success]` dalam 33,9 detik lewat plugin yang
+ter-mount di host DSH.
 
-Koreksi penting. `BUILD_REPORT.md` masih menulis 116 unit tambah 2 e2e sama
-dengan 118. Angka itu basi. Angka yang benar adalah 134 seperti tabel di atas.
+Koreksi penting. Klaim "116 unit" dan "132 unit" di dokumen lama sudah basi.
+Angka yang benar adalah 155 unit tambah 2 e2e, sesuai tabel di atas.
 
 ### Kontrak stdout dan file `agent_contract.py`
 
@@ -713,7 +721,7 @@ basi.
 | `ROUTING_DISABLED` | Panggilan tanpa `agent_id` ditolak | `enableRouting: false` di config (`src/index.ts`) | Baca config plugin di `cordis.patch.yml` profil | Set `enableRouting: true`, atau selalu sertakan `agent_id` |
 | `AGENT_DISABLED` | Agent ditemukan lalu ditolak | Status `registered` atau `disabled` (`src/index.ts`) | Baca field `status` entri di `agents/registry.yaml` | Pilih agent berstatus `experimental`, `validated`, atau `production` |
 | `PERMISSION_DENIED` | Ditolak sebelum spawn | Meminta izin di luar yang dideklarasikan entri (`src/permissions.ts`) | Baca field `permissions` entri di `agents/registry.yaml` | Minta hanya izin yang dideklarasikan, atau ubah registry |
-| `VENV_UNAVAILABLE` | Gagal sebelum spawn untuk entri ber-`venv` | venv tidak bisa dibuat atau dipakai (`src/bridge.ts`, `src/runtime-manager.ts`) | Pastikan `requirements.txt` ada di folder agent dan `python3 -m venv` bisa jalan | Perbaiki environment Python, atau hapus `venv` agar pakai `python3` sistem |
+| `VENV_UNAVAILABLE` | Gagal sebelum spawn untuk entri ber-`venv` | venv tidak bisa dibuat atau dipakai (`src/bridge.ts`, `src/runtime-manager.ts`) | Pastikan `requirements.txt` ada di folder agent. Plugin sudah mencoba `python3 -m venv`, lalu fallback `--without-pip` + bootstrap pip sistem; kalau keduanya gagal, baca pesan `error` yang menyebut kegagalan mana | Perbaiki environment Python, atau hapus `venv` agar pakai `python3` sistem |
 | `SANDBOX_UNAVAILABLE` | Gagal saat confinement | Provider sandbox melempar error berkode itu (`src/bridge.ts`) | Baca log host DSH | Perbaiki konfigurasi sandbox host |
 | `SPAWN_FAILED` | Proses tidak bisa dibuat | Path salah atau izin OS menolak (`src/bridge.ts`) | Pastikan `root` dan `entrypoint` entri menunjuk file yang ada | Perbaiki `root` atau `entrypoint` di registry |
 | `AGENT_EXIT_ERROR` | Agent keluar bukan dengan kode 0 | Error di kode Python agent, detail ada di `stderr` (`src/bridge.ts`) | Baca `details.stderr` di hasil | Perbaiki kode atau input agent |
@@ -806,6 +814,11 @@ Konfigurasi keamanan yang berlaku di sini, semuanya dibaca dari `src/`:
 
 - Izin default-tutup. Bridge tidak pernah memberi lebih dari yang dideklarasikan
   registry (`evaluatePermission` di `src/permissions.ts`).
+- Filesystem juga default-tutup. Grant `filesystem: null`/`read`/`none` mengikat
+  root agent read-only (`--ro-bind`, policy sandbox `read-only`); hanya grant
+  `readwrite` yang membuat root bisa ditulis. Tiga agent yang menulis file
+  (meeting-notes, unit-test-generator, documentation-writer) mendeklarasikan
+  grant itu eksplisit di registry (`src/bridge.ts`, `agents/registry.yaml`).
 - Secret hanya diteruskan bila namanya tercantum di `permissions.secrets` entri
   dan nilainya ada di `context` (`buildSpawnSpec` di `src/bridge.ts`). Nilai
   secret tidak dicetak di log, hanya `agent_id`, durasi, dan exit code.

@@ -300,3 +300,32 @@ npm run test:e2e
 # full gate
 npm run test:all
 ```
+
+---
+
+## UPDATE 2026-10-11 — stabilisasi + temuan baru (append, dokumen lama tidak diubah)
+
+Status: **155 unit + 2 e2e = 157 test PASS · tsc exit 0 · live `dsh500_list_agents` (17 agent) + live `run_agent` pii-sanitization `[success] 33937ms` via plugin ter-mount di host DSH**
+
+### Koreksi fakta lama (terukur ulang di host ini)
+
+1. **Katalog upstream sudah WRITABLE.** `touch <catalog>/agents/21-pii-sanitization-agent/.probe-write` berhasil (dihapus lagi). Asumsi "catalog RO / ensureVenv EROFS" di ASSUMPTIONS #9 tidak lagi berlaku: katalog kini berada di workspace RW. Fallback venv `<workspaceRoot>/venvs/<agentId>` tetap ada sebagai jaring pengaman.
+2. **`docker` di PATH bukan runtime yang berfungsi di distro ini.** PATH memuat shim WSL Docker Desktop (`/mnt/c/Program Files/Docker/...`), tetapi `docker --version` exit 1 ("could not be found in this WSL 2 distro"). `findAvailableRuntime(['docker','podman'])` karena itu **benar** mengembalikan `null`; backend `container` mengembalikan sinyal `error` (fail-closed, sesuai kontrak).
+3. **Angka test lama (116/118, lalu 132/134) basi.** Angka benar per 2026-10-11: 155 unit + 2 e2e.
+
+### Defect yang diperbaiki sesi ini (semua dengan proof test revert-and-run)
+
+| # | Defect | Lokeri | Proof |
+|---|---|---|---|
+| 1 | Test `findAvailableRuntime` meng-hardcode fakta host (`docker`) — merah deterministik saat shim WSL exit 1 | `tests/container-runtime.test.ts` | revert → 1 gagal; fix → hijau |
+| 2 | e2e `agentRoot()` masih probe path katalog LAMA setelah katalog pindah; registry + docs sudah dikoreksi, test ini kelewat → e2e merah di `beforeAll` | `tests/e2e-pii-agent.ts` | revert → `expected null not to be null`, 2 skipped; fix → 2/2 lulus |
+| 3 | `ensureVenv` hard-fail saat `ensurepip` tidak ada (host ini) → semua agent ber-`venv` mati `VENV_UNAVAILABLE`; padahal pip sistem jalan. Fallback `--without-pip` + `python3 -m pip --python <venv>` bootstrap | `src/runtime-manager.ts` | revert → 4/4 gagal; fix → hijau. Fail-closed saat bootstrap gagal (venv dihapus) |
+| 4 | DEFECT 1 (nested bwrap) hidup lagi di `runtime-backend.ts` — hanya `bridge.ts` yang difix dulu; test lama terlalu longgar (hanya cek `argv[0]==='bwrap'`) sehingga nesting lolos | `src/network-denial.ts` (helper bersama) + `src/bridge.ts` + `src/runtime-backend.ts` | revert runtime-backend → 5 gagal; mutation sweep lama → test falsifikasi gagal |
+| 5 | `granted.filesystem` dihitung `evaluatePermission` tapi tidak pernah dipakai: SEMUA agent dapat tulis root-nya walau registry `filesystem: null` (default-deny dilanggar) | `src/bridge.ts`, `src/runtime-backend.ts`, `src/permissions.ts` (narrowing), `agents/registry.yaml` (3 agent writer opt-in `readwrite`) | revert bridge → 3 gagal (termasuk real-process probe) |
+
+### Yang MASIH terblokir (jangan diklaim lulus)
+
+- Agent LLM (code-review, documentation-writer, web-research) sampai **panggilan API nyata**: butuh `OPENAI_API_KEY` yang tidak ada di lingkungan ini. venv kini bisa dibuat (fix #3), jalur spawn/argv/env sudah teruji, tapi panggilan LLM belum pernah dijalankan.
+- Backend `container`: dibutuhkannya runtime container yang berfungsi (tidak ada di distro ini). Backend default `bubblewrap` dipakai semua test.
+- Batas `shell: false`: Python di dalam agent masih bisa `os.system`/`subprocess` — bwrap tidak menolak exec; dokumentasi P6 tetap berlaku (tidak diklaim tertutup).
+- Build baru (`lib/` hasil rebuild sesi ini) belum ter-mount di host yang sedang jalan sampai owner me-restart DSH; live tool call di atas dijalankan dengan build yang ter-mount sebelumnya.
