@@ -8,7 +8,7 @@
  *   4. Prefer the highest match count, then the most mature status, then id.
  */
 
-import type { AgentRegistry, AgentCapability } from './types.js'
+import type { AgentRegistry, AgentRegistryEntry, AgentCapability } from './types.js'
 
 /**
  * Keyword → capability mapping.
@@ -67,6 +67,19 @@ export function detectCapabilities(request: string): Set<AgentCapability> {
 }
 
 /**
+ * How many of an entry's registered capabilities the request actually needs.
+ *
+ * Single source of truth for the score: both the eligible-list ordering and
+ * the final pick read it from here, so the two rankings cannot drift apart.
+ */
+function matchScore(
+  entry: AgentRegistryEntry,
+  capabilities: Set<AgentCapability>,
+): number {
+  return entry.capabilities.filter((cap) => capabilities.has(cap)).length
+}
+
+/**
  * Find every agent whose registered capabilities intersect the detected set.
  *
  * @returns Agent ids ordered by match count desc, then id asc for stability.
@@ -85,7 +98,7 @@ export function findEligibleAgents(
     if (!EXECUTABLE_STATUSES.has(entry.status)) {
       continue
     }
-    const score = entry.capabilities.filter((cap) => capabilities.has(cap)).length
+    const score = matchScore(entry, capabilities)
     if (score > 0) {
       eligible.push({ id, score })
     }
@@ -102,6 +115,12 @@ export function findEligibleAgents(
 /**
  * Select the best agent for a request.
  *
+ * Precedence is match count first, then status maturity, then id — the same
+ * chain `findEligibleAgents` documents. Status maturity is a TIEBREAK, not an
+ * override: a `production` agent that answers one of the three capabilities
+ * in "sanitize pii and audit security compliance" must not displace the
+ * agent that answers all three.
+ *
  * @returns The chosen agent, or null when nothing matches.
  */
 export function selectAgent(
@@ -116,8 +135,12 @@ export function selectAgent(
   }
 
   const scored = eligible
-    .map((id) => ({ id, rank: STATUS_RANK[registry[id].status] ?? 99 }))
-    .sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id))
+    .map((id) => ({
+      id,
+      score: matchScore(registry[id], capabilities),
+      rank: STATUS_RANK[registry[id].status] ?? 99,
+    }))
+    .sort((a, b) => b.score - a.score || a.rank - b.rank || a.id.localeCompare(b.id))
 
   const chosen = scored[0]
   return { id: chosen.id, entry: registry[chosen.id] }

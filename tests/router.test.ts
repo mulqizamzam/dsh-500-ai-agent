@@ -156,6 +156,72 @@ describe('router.selectAgent', () => {
   })
 })
 
+describe('router.selectAgent — capability match count is the PRIMARY sort key', () => {
+  // The module contract is: "Prefer the highest match count, then the most
+  // mature status, then id." Match count outranks BOTH of the tiebreakers, so
+  // these cases fix the score ahead of status and ahead of id order.
+  it('picks the higher match count when the loser has a more mature status', () => {
+    const registry: AgentRegistry = {
+      'broad-experimental': makeAgent('broad-experimental', ['pii', 'security', 'compliance'], 'experimental'),
+      'narrow-production': makeAgent('narrow-production', ['security'], 'production'),
+    }
+    const selected = selectAgent(registry, 'sanitize pii and audit security compliance')
+    expect(selected).not.toBeNull()
+    if (selected) expect(selected.id).toBe('broad-experimental')
+  })
+
+  it('picks the higher match count even when the loser sorts first by id', () => {
+    // 'aaa' would win a pure id comparison; it must not win on that alone.
+    const registry: AgentRegistry = {
+      'aaa-low-match': makeAgent('aaa-low-match', ['security'], 'experimental'),
+      'zzz-high-match': makeAgent('zzz-high-match', ['pii', 'security', 'compliance'], 'experimental'),
+    }
+    const selected = selectAgent(registry, 'sanitize pii and audit security compliance')
+    expect(selected).not.toBeNull()
+    if (selected) expect(selected.id).toBe('zzz-high-match')
+  })
+
+  it('agrees with findEligibleAgents on the top pick when both have equal status', () => {
+    // Precondition matters: findEligibleAgents has no maturity tiebreak, so on
+    // an equal-status registry the two must agree. When statuses differ they
+    // are allowed to diverge — selectAgent applies maturity, the list does not.
+    const registry: AgentRegistry = {
+      'pii-sanitization': makeAgent('pii-sanitization', ['pii', 'security', 'compliance', 'general'], 'experimental'),
+      'code-review': makeAgent('code-review', ['code-review', 'security', 'general'], 'experimental'),
+    }
+    const request = 'sanitize pii and audit security compliance in this log'
+    const expectedTop = findEligibleAgents(registry, detectCapabilities(request))[0]
+    const selected = selectAgent(registry, request)
+    expect(selected).not.toBeNull()
+    if (selected) expect(selected.id).toBe(expectedTop)
+  })
+
+  it('still uses status maturity as the tiebreak when the match count is equal', () => {
+    // Guard against over-correcting into a score-only sort: the documented
+    // tiebreak chain is score, then status, then id.
+    const registry: AgentRegistry = {
+      'pii-experimental': makeAgent('pii-experimental', ['pii', 'security'], 'experimental'),
+      'pii-validated': makeAgent('pii-validated', ['pii', 'security'], 'validated'),
+    }
+    const selected = selectAgent(registry, 'sanitize PII data')
+    expect(selected).not.toBeNull()
+    if (selected) {
+      expect(selected.id).toBe('pii-validated')
+      expect(selected.entry.status).toBe('validated')
+    }
+  })
+
+  it('still falls back to id order when score and status both tie', () => {
+    const registry: AgentRegistry = {
+      'alpha-agent': makeAgent('alpha-agent', ['pii'], 'experimental'),
+      'beta-agent': makeAgent('beta-agent', ['pii'], 'experimental'),
+    }
+    const selected = selectAgent(registry, 'sanitize pii')
+    expect(selected).not.toBeNull()
+    if (selected) expect(selected.id).toBe('alpha-agent')
+  })
+})
+
 describe('router.detectCapabilities — keywords backing the newly added agents', () => {
   it('detects qa capability (unit-test-generator)', () => {
     const caps = detectCapabilities('run the qa suite for this module')
