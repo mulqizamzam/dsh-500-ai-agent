@@ -450,9 +450,14 @@ run_agent(task: "sanitize this email address")
 ```
 
 Kata `sanitize` memicu capability `pii`. Router lalu memilih agent yang
-capability-nya cocok dan statusnya eligible, dengan prioritas `production`,
-lalu `validated`, lalu `experimental`, lalu urutan abjad `agent_id`
-(`selectAgent` di `src/router.ts`).
+capability-nya cocok dan statusnya eligible, dengan prioritas jumlah
+capability yang cocok (match count) lebih dulu, lalu `production`, lalu
+`validated`, lalu `experimental`, lalu urutan abjad `agent_id`
+(`selectAgent` di `src/router.ts`). Jadi untuk task "sanitize pii and audit
+security compliance" (match: `pii`, `security`, `compliance`),
+`pii-sanitization` yang cocok 3 capability menang atas `code-review` yang
+cocok 1, walau status `code-review` lebih mature. Status hanya pemutus
+seri, bukan penimpa skor.
 
 Tabel keyword yang dikenali, disalin dari `src/router.ts`:
 
@@ -649,12 +654,12 @@ npm test
 npm run test:e2e
 ```
 
-Hasil terukur pada 2026-10-11 di host ini. Perintah `npm run test:all` keluar
-dengan exit code 0. Unit test lulus 13 file dengan 155 test:
+Hasil terukur pada 2026-10-13 di host ini. Perintah `npm run test:all` keluar
+dengan exit code 0. Unit test lulus 14 file dengan 164 test:
 
 | Area | File | Jumlah lulus |
 |---|---|---|
-| Capability routing | `tests/router.test.ts` | 36 |
+| Capability routing | `tests/router.test.ts` | 41 |
 | Registry parse dan validasi | `tests/registry.test.ts` | 23 |
 | Bridge lifecycle | `tests/bridge.test.ts` | 20 |
 | Permission gate | `tests/permissions.test.ts` | 15 |
@@ -667,16 +672,17 @@ dengan exit code 0. Unit test lulus 13 file dengan 155 test:
 | Fallback jaringan | `tests/network-fallback.test.ts` | 3 |
 | Runtime manager venv | `tests/runtime-manager.test.ts` | 2 |
 | Fallback venv tanpa `ensurepip` | `tests/runtime-manager-ensurepip.test.ts` | 4 |
-| Total unit | | 155 |
+| Single-flight venv (build bersama) | `tests/runtime-manager-singleflight.test.ts` | 4 |
+| Total unit | | 164 |
 
 Ditambah e2e 2 dari 2 lulus di `tests/e2e-pii-agent.test.ts` dengan durasi
-sekitar 33 detik. Total 157 test. Verifikasi live di host ini pada 2026-10-11:
+sekitar 33 detik. Total 166 test. Verifikasi live di host ini pada 2026-10-11:
 `dsh500_list_agents` mengembalikan 17 agent, dan `run_agent` untuk
 `pii-sanitization` selesai `[success]` dalam 33,9 detik lewat plugin yang
 ter-mount di host DSH.
 
 Koreksi penting. Klaim "116 unit" dan "132 unit" di dokumen lama sudah basi.
-Angka yang benar adalah 155 unit tambah 2 e2e, sesuai tabel di atas.
+Angka yang benar adalah 164 unit tambah 2 e2e, sesuai tabel di atas.
 
 ### Kontrak stdout dan file `agent_contract.py`
 

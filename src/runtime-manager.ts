@@ -15,6 +15,17 @@
  *      This keeps per-agent isolation (the packages land in the venv's
  *      site-packages) while only assuming the host has a working pip.
  *
+ * Concurrency strategy:
+ *   ensureVenv() is single-flight per agent identity. A venv build starts by
+ *   rmSync-ing its target, so two concurrent builds for one agent do not just
+ *   duplicate work — they delete each other's venv mid-construction. Callers
+ *   arriving while a build is in flight await that build instead of starting
+ *   their own. Different agents never share a build.
+ *
+ *   ensureVenv() also never rejects. Its only caller invokes it outside any
+ *   try/catch, so a thrown filesystem error would surface as a failed tool
+ *   call rather than the structured `{status:'error'}` response envelope.
+ *
  * All imports are ESM — no require() calls.
  */
 
@@ -41,14 +52,81 @@ export interface VenvState {
 }
 
 /**
+ * Builds currently in flight, keyed by agent identity.
+ *
+ * `run_agent` is an LLM tool, so parallel calls for the SAME agent are
+ * ordinary, not exotic. Every build begins with
+ * `rmSync(venvDir, {recursive:true, force:true})`, so concurrent callers did
+ * not merely duplicate work — each deleted the venv the others were still
+ * constructing. Measured on this host (2026-10-13): 22 of 32 concurrent calls
+ * ran a redundant full rebuild and 5 threw ENOTEMPTY. One build per identity;
+ * the rest await its result.
+ */
+const inFlightBuilds = new Map<string, Promise<VenvState>>()
+
+/** Identity of one venv: the triple that fully determines which venvDir is used. */
+function venvKey(agentRoot: string, workspaceRoot: string, agentId: string): string {
+  return JSON.stringify([agentRoot, workspaceRoot, agentId])
+}
+
+/**
  * Ensure a per-agent venv exists, with fallback to workspace dir when
  * the agent root is read-only.
+ *
+ * Two guarantees the caller depends on — it invokes this OUTSIDE any
+ * try/catch (src/bridge.ts), so a rejection here surfaces as a failed tool
+ * call rather than the structured `{status:'error'}` envelope:
+ *
+ *   1. NEVER rejects. Any filesystem error — unreadable requirements.txt,
+ *      a workspace root that cannot be created, ENOTEMPTY from a directory
+ *      another process is writing into — resolves to a `healthy:false` state.
+ *   2. Concurrent callers for the same agent share ONE build.
+ *
+ * @param timeoutMs Budget for a single build. Coalesced callers adopt the
+ *   in-flight build's budget; the bridge always passes the same value.
  */
 export async function ensureVenv(
   agentRoot: string,
   workspaceRoot: string,
   agentId: string,
   timeoutMs = 180_000,
+): Promise<VenvState> {
+  const key = venvKey(agentRoot, workspaceRoot, agentId)
+  const existing = inFlightBuilds.get(key)
+  if (existing !== undefined) return existing
+
+  // The slot is registered synchronously and released only once the build
+  // settles. A slot retained after a failure would make that agent
+  // permanently unusable — the retry would just replay the cached error.
+  const build = buildVenv(agentRoot, workspaceRoot, agentId, timeoutMs)
+    .catch((e: unknown): VenvState => {
+      const err = e as NodeJS.ErrnoException
+      return {
+        root: agentRoot,
+        python: '',
+        healthy: false,
+        error: `venv preparation failed: ${err?.code ?? 'Error'}: ${err?.message ?? String(e)}`,
+        note: 'unexpected_error',
+      }
+    })
+    .finally(() => {
+      inFlightBuilds.delete(key)
+    })
+
+  inFlightBuilds.set(key, build)
+  return build
+}
+
+/**
+ * Build (or reuse) one agent's venv. Runs at most once per identity at a
+ * time — see the single-flight wrapper above. Callers must not use this
+ * directly.
+ */
+async function buildVenv(
+  agentRoot: string,
+  workspaceRoot: string,
+  agentId: string,
+  timeoutMs: number,
 ): Promise<VenvState> {
   const requirementsPath = join(agentRoot, 'requirements.txt')
 
